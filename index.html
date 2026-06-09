@@ -1,0 +1,1546 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>勤怠管理 - Fuse Innovation</title>
+<style>
+:root{
+  --navy:#0f2744;--blue:#1a4480;--blue-m:#2563c4;--blue-l:#93b8f0;--blue-ll:#dbeafe;--blue-bg:#eff6ff;
+  --g900:#111827;--g600:#4b5563;--g400:#9ca3af;--g200:#e5e7eb;--g100:#f3f4f6;--white:#ffffff;
+  --green:#16a34a;--green-l:#dcfce7;--amber:#d97706;--amber-l:#fef3c7;
+  --red:#dc2626;--red-l:#fee2e2;--purple:#7c3aed;--purple-l:#f3e8ff;--teal:#0d9488;--teal-l:#ccfbf1;
+  --r:12px;--rs:8px;--shadow:0 1px 3px rgba(0,0,0,.08),0 4px 16px rgba(0,0,0,.06);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Hiragino Kaku Gothic ProN','Hiragino Sans','Yu Gothic UI',sans-serif;background:var(--blue-bg);color:var(--g900);min-height:100vh;font-size:15px;}
+.screen{display:none;min-height:100vh;}.screen.active{display:flex;flex-direction:column;}
+
+/* login */
+#screen-login{align-items:center;justify-content:center;padding:24px;}
+.login-card{background:var(--white);border-radius:20px;box-shadow:var(--shadow);padding:40px 32px;width:100%;max-width:380px;}
+.login-logo{text-align:center;margin-bottom:28px;}
+.login-logo-icon{width:56px;height:56px;background:var(--blue);border-radius:16px;display:inline-flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:12px;}
+.login-logo h1{font-size:20px;font-weight:700;color:var(--navy);}
+.login-logo p{font-size:12px;color:var(--g400);margin-top:2px;}
+.fg{margin-bottom:16px;}.fg label{display:block;font-size:12px;font-weight:600;color:var(--g600);margin-bottom:6px;letter-spacing:.5px;}
+.fg input{width:100%;padding:12px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:15px;font-family:inherit;background:var(--g100);color:var(--g900);outline:none;transition:border-color .15s,background .15s;}
+.fg input:focus{border-color:var(--blue-m);background:var(--white);}
+.btn-primary{width:100%;padding:14px;background:var(--blue);color:var(--white);border:none;border-radius:var(--rs);font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;margin-top:8px;transition:background .15s;}
+.btn-primary:hover{background:var(--navy);}
+.login-err{background:var(--red-l);color:var(--red);font-size:13px;padding:10px 12px;border-radius:var(--rs);margin-top:12px;display:none;text-align:center;}
+
+/* header */
+.app-header{background:var(--navy);color:var(--white);padding:0 16px;height:52px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200;}
+.hl{display:flex;align-items:center;gap:10px;}
+.logo{font-size:17px;font-weight:700;}
+.huser{font-size:12px;color:var(--blue-l);}
+.btn-ico{background:rgba(255,255,255,.1);border:none;color:var(--white);width:34px;height:34px;border-radius:8px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;}
+.btn-ico:hover{background:rgba(255,255,255,.2);}
+
+/* staff tabs */
+.staff-tabs{background:var(--white);display:flex;border-bottom:1px solid var(--g200);position:sticky;top:52px;z-index:90;}
+.stab{flex:1;padding:12px 6px;border:none;background:none;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;color:var(--g400);border-bottom:2px solid transparent;transition:all .15s;}
+.stab.active{color:var(--blue);border-bottom-color:var(--blue);}
+.staff-panel{display:none;padding:14px;max-width:480px;margin:0 auto;width:100%;}
+.staff-panel.active{display:block;}
+
+/* cards */
+.card{background:var(--white);border-radius:var(--r);padding:18px;box-shadow:var(--shadow);margin-bottom:12px;}
+.card h3{font-size:14px;font-weight:700;color:var(--navy);margin-bottom:10px;}
+.card p{font-size:12px;color:var(--g400);margin-bottom:10px;}
+.sec-label{font-size:11px;font-weight:700;color:var(--g600);letter-spacing:.8px;margin-bottom:8px;padding-left:2px;}
+
+/* clock */
+.date-card{background:var(--white);border-radius:var(--r);padding:14px 18px;margin-bottom:12px;box-shadow:var(--shadow);display:flex;justify-content:space-between;align-items:center;}
+.date-card .dt{font-size:13px;color:var(--g600);}
+.date-card .wd{font-size:11px;color:var(--g400);margin-top:1px;}
+.date-card .tm{font-size:22px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;}
+
+/* status bar */
+.status-bar{background:var(--white);border-radius:var(--r);padding:12px 16px;margin-bottom:12px;box-shadow:var(--shadow);}
+.status-bar h4{font-size:11px;color:var(--g400);font-weight:600;letter-spacing:.5px;margin-bottom:8px;}
+.badge-row{display:flex;flex-wrap:wrap;gap:6px;}
+.sbadge{font-size:11px;padding:3px 10px;border-radius:20px;font-weight:600;}
+.sbadge.done{background:var(--green-l);color:var(--green);}
+.sbadge.pend{background:var(--g100);color:var(--g400);}
+
+/* report buttons */
+.rep-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
+.rep-btn{background:var(--white);border:2px solid var(--g200);border-radius:var(--r);padding:16px 10px;cursor:pointer;text-align:center;transition:all .15s;font-family:inherit;position:relative;}
+.rep-btn:hover{border-color:var(--blue-l);background:var(--blue-bg);transform:translateY(-1px);box-shadow:var(--shadow);}
+.rep-btn.done{border-color:var(--green);background:var(--green-l);}
+.rep-btn.done::after{content:'✓';position:absolute;top:7px;right:9px;font-size:12px;color:var(--green);font-weight:700;}
+.rep-btn .ico{font-size:26px;display:block;margin-bottom:5px;}
+.rep-btn .lbl{font-size:13px;font-weight:600;color:var(--g900);}
+.rep-btn .sub{font-size:10px;color:var(--g400);margin-top:1px;}
+
+/* btn */
+.btn-sub{width:100%;padding:12px;background:var(--blue-m);color:var(--white);border:none;border-radius:var(--rs);font-size:14px;font-weight:600;font-family:inherit;cursor:pointer;margin-top:8px;transition:background .15s;}
+.btn-sub:hover{background:var(--blue);}
+.btn-sm{padding:6px 12px;border:none;border-radius:6px;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;transition:all .15s;}
+
+textarea{width:100%;min-height:100px;padding:10px 12px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:14px;font-family:inherit;background:var(--g100);resize:vertical;outline:none;transition:border-color .15s;}
+textarea:focus{border-color:var(--blue-m);background:var(--white);}
+
+/* nippo history */
+.dn-item{background:var(--g100);border-radius:var(--rs);padding:12px;margin-bottom:6px;}
+.dn-date{font-size:11px;color:var(--g400);margin-bottom:4px;}
+.dn-text{font-size:13px;line-height:1.6;}
+
+/* ========== SHIFT CALENDAR ========== */
+.cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.cal-nav h3{font-size:15px;font-weight:700;color:var(--navy);}
+.cal-nav-btn{background:var(--g100);border:none;border-radius:6px;width:30px;height:30px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;color:var(--g600);}
+.cal-nav-btn:hover{background:var(--g200);}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:10px;}
+.cal-dow{font-size:10px;font-weight:700;text-align:center;padding:4px 0;color:var(--g400);}
+.cal-dow.sun{color:var(--red);}
+.cal-dow.sat{color:var(--blue);}
+.cal-cell{min-height:56px;border-radius:6px;border:1.5px solid var(--g200);padding:3px;cursor:pointer;transition:all .12s;background:var(--white);position:relative;}
+.cal-cell:hover{border-color:var(--blue-l);background:var(--blue-bg);}
+.cal-cell.empty{background:transparent;border-color:transparent;cursor:default;}
+.cal-cell.today{border-color:var(--blue-m);background:var(--blue-bg);}
+.cal-cell.has-shift{border-color:var(--green);background:var(--green-l);}
+.cal-cell.off-day{background:var(--g100);}
+.cal-cell.weekend .cal-day-num{color:var(--red);}
+.cal-cell.sat-cell .cal-day-num{color:var(--blue);}
+.cal-day-num{font-size:11px;font-weight:700;color:var(--g900);display:block;margin-bottom:2px;}
+.cal-shift-chip{font-size:9px;padding:1px 4px;border-radius:3px;font-weight:600;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:1px;}
+/* legend */
+.cal-legend{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
+.legend-item{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--g600);}
+.legend-dot{width:10px;height:10px;border-radius:2px;}
+
+/* ========== TASK BOARD ========== */
+.task-board{display:grid;gap:10px;margin-bottom:14px;}
+.task-section-title{font-size:11px;font-weight:700;color:var(--g600);letter-spacing:.8px;margin-bottom:8px;display:flex;align-items:center;gap:6px;}
+.task-count-badge{background:var(--red);color:var(--white);font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;}
+.task-count-badge.ok{background:var(--green);}
+.task-item{background:var(--white);border-radius:var(--rs);padding:10px 14px;box-shadow:var(--shadow);display:flex;align-items:center;gap:10px;}
+.task-item.urgent{border-left:3px solid var(--red);}
+.task-item.warn{border-left:3px solid var(--amber);}
+.task-item.ok{border-left:3px solid var(--green);}
+.task-avatar{width:32px;height:32px;border-radius:50%;background:var(--blue-ll);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--blue);flex-shrink:0;}
+.task-info{flex:1;}
+.task-name{font-size:13px;font-weight:600;}
+.task-detail{font-size:11px;color:var(--g400);margin-top:1px;}
+.task-actions{display:flex;gap:6px;}
+.remind-btn{background:var(--amber-l);color:var(--amber);border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:700;font-family:inherit;cursor:pointer;transition:all .15s;white-space:nowrap;}
+.remind-btn:hover{background:var(--amber);color:var(--white);}
+.done-badge{background:var(--green-l);color:var(--green);font-size:11px;font-weight:700;padding:4px 10px;border-radius:6px;white-space:nowrap;}
+
+/* ========== ADMIN ========== */
+.admin-content{flex:1;padding:14px;max-width:760px;margin:0 auto;width:100%;}
+.admin-tabs{display:flex;gap:3px;background:var(--white);padding:4px;border-radius:var(--rs);margin-bottom:12px;box-shadow:var(--shadow);overflow-x:auto;}
+.atab{flex-shrink:0;padding:8px 12px;border:none;border-radius:6px;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;background:transparent;color:var(--g400);transition:all .15s;white-space:nowrap;}
+.atab.active{background:var(--blue);color:var(--white);}
+.apanel{display:none;}.apanel.active{display:block;}
+
+/* summary */
+.sum-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px;}
+.sum-card{background:var(--white);border-radius:var(--r);padding:12px;text-align:center;box-shadow:var(--shadow);}
+.sum-card .cnt{font-size:24px;font-weight:700;color:var(--navy);}
+.sum-card .lbl{font-size:10px;color:var(--g400);margin-top:2px;font-weight:600;}
+.sum-card.warn .cnt{color:var(--amber);}
+.sum-card.good .cnt{color:var(--green);}
+.sum-card.bad .cnt{color:var(--red);}
+
+/* staff table */
+.tbl-card{background:var(--white);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden;margin-bottom:12px;}
+.tbl-head{padding:12px 16px;border-bottom:1px solid var(--g200);display:flex;align-items:center;justify-content:space-between;}
+.tbl-head h3{font-size:13px;font-weight:700;color:var(--navy);}
+.staff-row-a{padding:10px 14px;border-bottom:1px solid var(--g100);display:flex;align-items:center;gap:10px;cursor:pointer;transition:background .12s;}
+.staff-row-a:last-child{border-bottom:none;}
+.staff-row-a:hover{background:var(--blue-bg);}
+.avatar{width:34px;height:34px;border-radius:50%;background:var(--blue-ll);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:var(--blue);flex-shrink:0;}
+.sname{font-size:13px;font-weight:600;min-width:52px;}
+.check-row{display:flex;gap:4px;flex-wrap:wrap;flex:1;}
+.ck{font-size:10px;padding:2px 6px;border-radius:8px;font-weight:600;white-space:nowrap;}
+.ck.ok{background:var(--green-l);color:var(--green);}
+.ck.ng{background:var(--g100);color:var(--g400);}
+.ck.wa{background:var(--amber-l);color:var(--amber);}
+.arrow-r{color:var(--g400);font-size:14px;flex-shrink:0;}
+
+/* log */
+.log-list{display:grid;gap:6px;}
+.log-item{background:var(--white);border-radius:var(--rs);padding:10px 12px;box-shadow:var(--shadow);display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;}
+.log-time{font-size:11px;color:var(--g400);min-width:42px;}
+.log-badge{font-size:10px;padding:2px 7px;border-radius:5px;font-weight:600;white-space:nowrap;}
+.log-name{font-size:13px;font-weight:600;}
+
+/* admin shift calendar - multi user overlay */
+.admin-cal-wrap{overflow-x:auto;}
+.admin-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;min-width:560px;}
+.admin-cal-cell{min-height:80px;border-radius:6px;border:1.5px solid var(--g200);padding:3px;background:var(--white);}
+.admin-cal-cell.empty{background:transparent;border-color:transparent;}
+.admin-cal-cell.today{border-color:var(--blue-m);}
+.acal-day{font-size:10px;font-weight:700;margin-bottom:2px;color:var(--g600);}
+.acal-chip{font-size:9px;padding:1px 4px;border-radius:3px;font-weight:600;margin-bottom:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+/* settings */
+.set-card{background:var(--white);border-radius:var(--r);padding:18px;box-shadow:var(--shadow);margin-bottom:10px;}
+.set-card h3{font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px;}
+.set-card p{font-size:12px;color:var(--g400);margin-bottom:12px;}
+.set-card input{width:100%;padding:9px 12px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:13px;font-family:inherit;background:var(--g100);outline:none;margin-bottom:8px;}
+.set-card input:focus{border-color:var(--blue-m);background:var(--white);}
+
+/* template list */
+.tmpl-list{display:grid;gap:6px;margin-bottom:10px;}
+.tmpl-item{display:flex;align-items:center;gap:8px;background:var(--g100);border-radius:var(--rs);padding:10px 12px;}
+.tmpl-color{width:12px;height:12px;border-radius:3px;flex-shrink:0;}
+.tmpl-name{font-size:13px;font-weight:600;flex:1;}
+.tmpl-time{font-size:12px;color:var(--g600);}
+.tmpl-del{background:none;border:none;cursor:pointer;font-size:16px;color:var(--g400);padding:2px;}
+
+/* detail modal */
+.detail-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:500;overflow-y:auto;padding:12px;}
+.detail-overlay.open{display:block;}
+.detail-modal{background:var(--white);border-radius:16px;max-width:560px;margin:0 auto;overflow:hidden;animation:fadeUp .22s ease;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
+.dm-header{background:var(--navy);color:var(--white);padding:16px 18px;display:flex;align-items:center;gap:10px;}
+.dm-avatar{width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:700;}
+.dm-name{font-size:17px;font-weight:700;}
+.dm-id{font-size:11px;color:var(--blue-l);}
+.dm-close{margin-left:auto;background:rgba(255,255,255,.15);border:none;color:var(--white);width:30px;height:30px;border-radius:6px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;}
+.dm-tabs{display:flex;border-bottom:1px solid var(--g200);}
+.dm-tab{flex:1;padding:10px 6px;border:none;background:none;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;color:var(--g400);border-bottom:2px solid transparent;}
+.dm-tab.active{color:var(--blue);border-bottom-color:var(--blue);}
+.dm-body{padding:14px;}
+.dm-panel{display:none;}.dm-panel.active{display:block;}
+.dk-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;}
+.dk-card{background:var(--g100);border-radius:var(--rs);padding:10px;text-align:center;}
+.dk-card .dkv{font-size:16px;font-weight:700;color:var(--navy);}
+.dk-card .dkl{font-size:10px;color:var(--g400);margin-top:2px;font-weight:600;}
+.dk-row{display:flex;align-items:center;gap:8px;padding:7px 8px;background:var(--g100);border-radius:var(--rs);margin-bottom:4px;flex-wrap:wrap;}
+.dk-type{font-size:10px;padding:2px 7px;border-radius:5px;font-weight:600;}
+
+/* time input modal */
+.tim-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:700;align-items:flex-end;justify-content:center;}
+.tim-overlay.open{display:flex;}
+.tim-modal{background:var(--white);border-radius:20px 20px 0 0;padding:24px 20px 36px;width:100%;max-width:480px;animation:slideUp .22s ease;}
+@keyframes slideUp{from{transform:translateY(100%);}to{transform:translateY(0);}}
+.tim-modal h3{font-size:16px;font-weight:700;color:var(--navy);margin-bottom:4px;}
+.tim-sub{font-size:12px;color:var(--g400);margin-bottom:16px;}
+.tim-section{margin-bottom:14px;}
+.tim-section-title{font-size:11px;font-weight:700;color:var(--g600);letter-spacing:.6px;margin-bottom:6px;}
+.tim-row{display:flex;align-items:center;gap:10px;background:var(--g100);border-radius:var(--rs);padding:10px 12px;margin-bottom:5px;}
+.tim-row-icon{font-size:16px;width:24px;text-align:center;}
+.tim-row-label{font-size:13px;font-weight:600;color:var(--g600);flex:1;}
+.tim-row input[type=time]{padding:6px 10px;border:1.5px solid var(--g200);border-radius:6px;font-size:15px;font-family:inherit;background:var(--white);color:var(--g900);outline:none;min-width:100px;}
+.tim-row input[type=time]:focus{border-color:var(--blue-m);}
+.tim-logged{font-size:11px;color:var(--g400);margin-top:2px;padding-left:44px;}
+.tim-note-area{width:100%;padding:9px 12px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:14px;font-family:inherit;background:var(--g100);resize:none;outline:none;min-height:56px;margin-top:3px;}
+.tim-note-area:focus{border-color:var(--blue-m);background:var(--white);}
+.tim-btns{display:grid;gap:7px;margin-top:4px;}
+.tim-confirm{padding:13px;border:none;border-radius:var(--rs);font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;background:var(--blue);color:var(--white);}
+.tim-cancel{padding:11px;border:none;border-radius:var(--rs);font-size:14px;font-weight:600;font-family:inherit;cursor:pointer;background:var(--g100);color:var(--g600);}
+
+/* shift cell picker modal */
+.picker-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:800;align-items:flex-end;justify-content:center;}
+.picker-overlay.open{display:flex;}
+.picker-modal{background:var(--white);border-radius:20px 20px 0 0;padding:24px 20px 36px;width:100%;max-width:480px;animation:slideUp .22s ease;}
+.picker-modal h3{font-size:16px;font-weight:700;color:var(--navy);margin-bottom:4px;}
+.picker-date{font-size:12px;color:var(--g400);margin-bottom:16px;}
+.picker-grid{display:grid;gap:7px;margin-bottom:14px;}
+.picker-option{display:flex;align-items:center;gap:10px;padding:12px 14px;border:2px solid var(--g200);border-radius:var(--rs);cursor:pointer;transition:all .15s;background:var(--white);}
+.picker-option:hover{border-color:var(--blue-l);background:var(--blue-bg);}
+.picker-option.selected{border-color:var(--blue);background:var(--blue-bg);}
+.picker-option.off-selected{border-color:var(--g400);background:var(--g100);}
+.picker-dot{width:14px;height:14px;border-radius:3px;flex-shrink:0;}
+.picker-label{font-size:14px;font-weight:600;flex:1;}
+.picker-time{font-size:12px;color:var(--g600);}
+.picker-btns{display:grid;gap:7px;}
+
+/* bulk mode */
+.bulk-bar{background:var(--navy);color:var(--white);padding:10px 14px;display:flex;align-items:center;gap:8px;border-radius:var(--rs);margin-bottom:10px;font-size:13px;}
+.bulk-bar .bulk-count{font-weight:700;color:var(--blue-l);flex:1;}
+.bulk-clear{background:rgba(255,255,255,.15);border:none;color:var(--white);padding:5px 10px;border-radius:6px;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;}
+.cal-cell.bulk-selected{border-color:var(--navy)!important;background:#dbeafe!important;box-shadow:0 0 0 2px var(--blue-m);}
+.cal-cell.bulk-selected .cal-day-num{color:var(--blue);}
+/* toggle row */
+.mode-toggle{display:flex;background:var(--g100);border-radius:var(--rs);padding:3px;gap:3px;margin-bottom:10px;}
+.mode-btn{flex:1;padding:8px;border:none;border-radius:6px;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;background:transparent;color:var(--g400);transition:all .15s;}
+.mode-btn.active{background:var(--white);color:var(--navy);box-shadow:var(--shadow);}
+/* template compact list (staff) */
+.tmpl-compact{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
+.tmpl-chip{display:flex;align-items:center;gap:5px;padding:6px 10px;border-radius:20px;font-size:12px;font-weight:600;cursor:default;border:1.5px solid transparent;}
+.tmpl-chip-del{background:none;border:none;cursor:pointer;font-size:13px;color:inherit;opacity:.6;padding:0 0 0 2px;line-height:1;}
+/* staff template form */
+.staff-tmpl-form{background:var(--g100);border-radius:var(--rs);padding:12px;margin-top:8px;}
+.staff-tmpl-form-title{font-size:11px;font-weight:700;color:var(--g600);letter-spacing:.5px;margin-bottom:8px;}
+.staff-tmpl-row{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:7px;}
+.staff-tmpl-row input{padding:8px 10px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:13px;font-family:inherit;background:var(--white);outline:none;}
+.staff-tmpl-row input:focus{border-color:var(--blue-m);}
+.staff-tmpl-name{padding:8px 10px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:13px;font-family:inherit;background:var(--white);outline:none;width:100%;margin-bottom:7px;}
+.staff-tmpl-name:focus{border-color:var(--blue-m);}
+
+/* geo */
+.geo-tag{display:inline-flex;align-items:center;gap:4px;font-size:10px;padding:2px 7px;border-radius:10px;font-weight:600;white-space:nowrap;}
+.geo-tag.ok{background:var(--teal-l);color:var(--teal);}
+.geo-tag.ng{background:var(--g100);color:var(--g400);}
+.geo-tag.getting{background:var(--amber-l);color:var(--amber);}
+.geo-spinner{display:inline-block;width:8px;height:8px;border:1.5px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spin .6s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.geo-map-btn{display:inline-flex;align-items:center;gap:3px;font-size:10px;padding:2px 7px;background:var(--blue-ll);color:var(--blue);border:none;border-radius:6px;cursor:pointer;font-family:inherit;font-weight:600;text-decoration:none;}
+.geo-map-btn:hover{background:var(--blue-l);color:var(--white);}
+/* geo permission banner */
+.geo-banner{display:flex;align-items:center;gap:10px;background:var(--amber-l);border-radius:var(--rs);padding:10px 14px;margin-bottom:10px;font-size:12px;color:var(--g900);}
+.geo-banner-icon{font-size:20px;flex-shrink:0;}
+.geo-banner p{flex:1;line-height:1.5;}
+.geo-banner button{background:var(--amber);color:var(--white);border:none;border-radius:6px;padding:6px 10px;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;white-space:nowrap;}
+
+/* toast */
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--g900);color:var(--white);padding:11px 18px;border-radius:22px;font-size:13px;font-weight:500;z-index:9999;transition:transform .3s cubic-bezier(.34,1.56,.64,1);white-space:nowrap;box-shadow:0 4px 20px rgba(0,0,0,.3);}
+.toast.show{transform:translateX(-50%) translateY(0);}
+.toast.success{background:var(--green);}
+.toast.error{background:var(--red);}
+
+@media(min-width:600px){.tim-overlay,.picker-overlay{align-items:center;}.tim-modal,.picker-modal{border-radius:20px;}}
+@media(max-width:480px){.sum-grid{grid-template-columns:repeat(2,1fr);}}
+</style>
+</head>
+<body>
+
+<!-- ログイン -->
+<div id="screen-login" class="screen active">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="login-logo-icon">⏱</div>
+      <h1>勤怠管理</h1>
+      <p>Fuse Innovation 株式会社</p>
+    </div>
+    <div class="fg"><label>スタッフID</label><input type="text" id="inp-id" placeholder="FI001" autocomplete="username"></div>
+    <div class="fg"><label>パスワード</label><input type="password" id="inp-pw" placeholder="パスワードを入力" autocomplete="current-password"></div>
+    <button class="btn-primary" onclick="doLogin()">ログイン</button>
+    <div class="login-err" id="login-err">IDまたはパスワードが違います</div>
+    <p style="font-size:11px;color:var(--g400);text-align:center;margin-top:16px;">管理者：ID「admin」PW「admin123」<br>スタッフ：ID「FI001〜003」PW「1234」</p>
+  </div>
+</div>
+
+<!-- スタッフ画面 -->
+<div id="screen-staff" class="screen">
+  <div class="app-header">
+    <div class="hl"><span class="logo">⏱ 勤怠</span><span class="huser" id="huser"></span></div>
+    <button class="btn-ico" onclick="doLogout()">⏻</button>
+  </div>
+  <div class="staff-tabs">
+    <button class="stab active" onclick="switchStaffTab('report')">📋 報告</button>
+    <button class="stab" onclick="switchStaffTab('nippo')">📝 日報</button>
+    <button class="stab" onclick="switchStaffTab('shift')">📅 シフト</button>
+  </div>
+
+  <!-- 報告タブ -->
+  <div class="staff-panel active" id="spanel-report">
+    <div class="date-card">
+      <div><div class="dt" id="disp-date"></div><div class="wd" id="disp-wd"></div></div>
+      <div class="tm" id="disp-time"></div>
+    </div>
+    <div id="geo-banner" class="geo-banner" style="display:none;">
+      <div class="geo-banner-icon">📍</div>
+      <p>打刻時に位置情報を記録すると、管理者が出勤場所を確認できます。</p>
+      <button onclick="requestGeo()">許可する</button>
+    </div>
+    <div class="status-bar">
+      <h4>本日の報告状況</h4>
+      <div class="badge-row" id="status-badges"></div>
+    </div>
+    <div class="sec-label">タップして報告する</div>
+    <div class="rep-grid">
+      <button class="rep-btn" id="rbtn-kiso"      onclick="doReport('起床確認')"><span class="ico">🌅</span><div class="lbl">起床確認</div><div class="sub">出勤前</div></button>
+      <button class="rep-btn" id="rbtn-shuppatsu" onclick="doReport('出発報告')"><span class="ico">🚗</span><div class="lbl">出発報告</div><div class="sub">移動開始</div></button>
+      <button class="rep-btn" id="rbtn-shukkin"   onclick="openTimModal('出勤報告')"><span class="ico">🏢</span><div class="lbl">出勤報告</div><div class="sub">現場到着</div></button>
+      <button class="rep-btn" id="rbtn-kyukei"    onclick="openTimModal('休憩')"><span class="ico">☕</span><div class="lbl">休憩</div><div class="sub">開始 / 終了</div></button>
+      <button class="rep-btn" id="rbtn-taikin"    onclick="openTimModal('退勤報告')" style="grid-column:1/-1;"><span class="ico">🌙</span><div class="lbl">退勤報告</div><div class="sub">業務終了</div></button>
+    </div>
+  </div>
+
+  <!-- 日報タブ -->
+  <div class="staff-panel" id="spanel-nippo">
+    <div class="card">
+      <h3>📝 本日の日報</h3>
+      <textarea id="nippo-txt" placeholder="今日の業務内容、気づいたこと、明日の予定などを入力してください"></textarea>
+      <button class="btn-sub" onclick="submitNippo()">日報を送信する</button>
+    </div>
+    <div class="card"><h3>過去の日報</h3><div id="nippo-history"></div></div>
+  </div>
+
+  <!-- シフトタブ -->
+  <div class="staff-panel" id="spanel-shift">
+    <!-- テンプレート管理 -->
+    <div class="card">
+      <h3>📋 シフトテンプレート</h3>
+      <div class="tmpl-compact" id="staff-tmpl-compact"></div>
+      <div class="staff-tmpl-form" id="staff-tmpl-form" style="display:none;">
+        <div class="staff-tmpl-form-title">新しいテンプレートを追加</div>
+        <input class="staff-tmpl-name" type="text" id="s-tmpl-name" placeholder="例：シフトD">
+        <div class="staff-tmpl-row">
+          <div>
+            <div style="font-size:11px;color:var(--g600);margin-bottom:3px;font-weight:600;">開始</div>
+            <input type="time" id="s-tmpl-start" value="10:00">
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--g600);margin-bottom:3px;font-weight:600;">終了</div>
+            <input type="time" id="s-tmpl-end" value="19:00">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;">
+          <button class="btn-sub" style="margin-top:0;" onclick="staffAddTemplate()">追加する</button>
+          <button class="btn-sub" style="margin-top:0;background:var(--g200);color:var(--g600);" onclick="toggleTmplForm(false)">キャンセル</button>
+        </div>
+      </div>
+      <button class="btn-sm" style="background:var(--blue-ll);color:var(--blue);margin-top:6px;width:100%;padding:8px;" id="tmpl-add-toggle-btn" onclick="toggleTmplForm(true)">＋ テンプレートを追加する</button>
+    </div>
+
+    <!-- シフト入力カレンダー -->
+    <div class="card">
+      <h3>📅 シフト提出</h3>
+      <!-- 入力モード切替 -->
+      <div class="mode-toggle">
+        <button class="mode-btn active" id="mode-btn-single" onclick="setMode('single')">📌 1日ずつ入力</button>
+        <button class="mode-btn" id="mode-btn-bulk" onclick="setMode('bulk')">☑️ まとめて入力</button>
+      </div>
+      <!-- 一括モード説明 -->
+      <div id="bulk-hint" style="display:none;font-size:12px;color:var(--g600);background:var(--amber-l);padding:8px 12px;border-radius:var(--rs);margin-bottom:10px;">
+        日付を複数タップして選択 → 下の「まとめて適用」でシフトを一括設定できます
+      </div>
+      <!-- 一括選択バー -->
+      <div class="bulk-bar" id="bulk-bar" style="display:none;">
+        <span class="bulk-count" id="bulk-count-label">0日選択中</span>
+        <button class="bulk-clear" onclick="clearBulkSelection()">選択解除</button>
+        <button class="tim-confirm" style="padding:6px 14px;font-size:13px;" onclick="openBulkPicker()">まとめて適用</button>
+      </div>
+      <div class="cal-nav">
+        <button class="cal-nav-btn" onclick="shiftCalPrev()">‹</button>
+        <h3 id="shift-cal-title" style="font-size:14px;"></h3>
+        <button class="cal-nav-btn" onclick="shiftCalNext()">›</button>
+      </div>
+      <div class="cal-legend" id="shift-cal-legend"></div>
+      <div class="cal-grid" id="shift-cal-grid"></div>
+      <button class="btn-sub" onclick="submitShift()" style="background:var(--navy);margin-top:10px;">シフトを提出する</button>
+    </div>
+    <div class="card"><h3>提出済みシフト</h3><div id="my-shift-hist"></div></div>
+  </div>
+</div>
+
+<!-- 管理者画面 -->
+<div id="screen-admin" class="screen">
+  <div class="app-header">
+    <div class="hl"><span class="logo">⏱ 管理者</span></div>
+    <button class="btn-ico" onclick="doLogout()">⏻</button>
+  </div>
+  <div class="admin-content">
+    <div class="admin-tabs">
+      <button class="atab active" onclick="switchAdminTab('today')">今日</button>
+      <button class="atab" onclick="switchAdminTab('taskboard')">タスク</button>
+      <button class="atab" onclick="switchAdminTab('staff')">スタッフ</button>
+      <button class="atab" onclick="switchAdminTab('log')">ログ</button>
+      <button class="atab" onclick="switchAdminTab('shift')">シフト</button>
+      <button class="atab" onclick="switchAdminTab('settings')">設定</button>
+    </div>
+
+    <!-- 今日 -->
+    <div class="apanel active" id="apanel-today">
+      <div class="sum-grid">
+        <div class="sum-card good"><div class="cnt" id="sc-shukkin">0</div><div class="lbl">出勤済み</div></div>
+        <div class="sum-card"><div class="cnt" id="sc-taikin">0</div><div class="lbl">退勤済み</div></div>
+        <div class="sum-card bad"><div class="cnt" id="sc-miss">0</div><div class="lbl">未出勤</div></div>
+        <div class="sum-card"><div class="cnt" id="sc-nippo">0</div><div class="lbl">日報提出</div></div>
+      </div>
+      <div class="tbl-card">
+        <div class="tbl-head"><h3>スタッフ状況（クリックで詳細）</h3><span style="font-size:11px;color:var(--g400);" id="today-date-lbl"></span></div>
+        <div id="today-staff-list"></div>
+      </div>
+    </div>
+
+    <!-- タスクボード -->
+    <div class="apanel" id="apanel-taskboard">
+      <div id="taskboard-content"></div>
+    </div>
+
+    <!-- スタッフ一覧 -->
+    <div class="apanel" id="apanel-staff">
+      <div class="tbl-card">
+        <div class="tbl-head"><h3>スタッフ一覧（クリックで個人詳細）</h3></div>
+        <div id="staff-master-list"></div>
+      </div>
+    </div>
+
+    <!-- ログ -->
+    <div class="apanel" id="apanel-log">
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+        <select id="log-filter-user" onchange="renderAdminLog()" style="padding:7px 10px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:13px;font-family:inherit;background:var(--white);outline:none;cursor:pointer;">
+          <option value="">全スタッフ</option>
+        </select>
+        <select id="log-filter-type" onchange="renderAdminLog()" style="padding:7px 10px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:13px;font-family:inherit;background:var(--white);outline:none;cursor:pointer;">
+          <option value="">全種別</option>
+          <option>起床確認</option><option>出発報告</option><option>出勤報告</option>
+          <option>休憩開始</option><option>休憩終了</option><option>退勤報告</option><option>日報</option>
+        </select>
+      </div>
+      <div class="log-list" id="admin-log-list"></div>
+    </div>
+
+    <!-- シフト（管理者カレンダービュー） -->
+    <div class="apanel" id="apanel-shift">
+      <div class="card">
+        <div class="cal-nav">
+          <button class="cal-nav-btn" onclick="adminCalPrev()">‹</button>
+          <h3 id="admin-cal-title"></h3>
+          <button class="cal-nav-btn" onclick="adminCalNext()">›</button>
+        </div>
+        <div class="cal-legend" id="admin-cal-legend"></div>
+        <div class="admin-cal-wrap">
+          <div class="cal-grid" style="min-width:420px;margin-bottom:4px;">
+            <div class="cal-dow sun">日</div><div class="cal-dow">月</div><div class="cal-dow">火</div>
+            <div class="cal-dow">水</div><div class="cal-dow">木</div><div class="cal-dow">金</div>
+            <div class="cal-dow sat">土</div>
+          </div>
+          <div class="admin-cal-wrap"><div class="admin-cal-grid" id="admin-cal-grid"></div></div>
+        </div>
+        <div style="margin-top:12px;" id="admin-shift-detail"></div>
+      </div>
+    </div>
+
+    <!-- 設定 -->
+    <div class="apanel" id="apanel-settings">
+      <!-- シフトテンプレート管理 -->
+      <div class="set-card">
+        <h3>📋 シフトテンプレート管理</h3>
+        <p>スタッフがシフト提出時に選べるテンプレートを作成できます</p>
+        <div class="tmpl-list" id="tmpl-list"></div>
+        <div style="display:grid;gap:7px;background:var(--g100);border-radius:var(--rs);padding:12px;margin-top:4px;">
+          <div style="font-size:11px;font-weight:700;color:var(--g600);letter-spacing:.5px;">新規テンプレートを追加</div>
+          <input type="text" id="tmpl-name-input" placeholder="例：シフトA" style="padding:9px 12px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:13px;font-family:inherit;background:var(--white);outline:none;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div>
+              <div style="font-size:11px;color:var(--g600);margin-bottom:4px;font-weight:600;">開始時刻</div>
+              <input type="time" id="tmpl-start-input" value="10:00" style="width:100%;padding:8px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:14px;font-family:inherit;background:var(--white);outline:none;">
+            </div>
+            <div>
+              <div style="font-size:11px;color:var(--g600);margin-bottom:4px;font-weight:600;">終了時刻</div>
+              <input type="time" id="tmpl-end-input" value="19:00" style="width:100%;padding:8px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:14px;font-family:inherit;background:var(--white);outline:none;">
+            </div>
+          </div>
+          <button class="btn-sub" onclick="addTemplate()">テンプレートを追加する</button>
+        </div>
+      </div>
+      <div class="set-card">
+        <h3>Google Apps Script URL</h3>
+        <p>GASデプロイURLを入力するとスプレッドシートに自動保存・LINE通知が届きます</p>
+        <input type="url" id="gas-url-input" placeholder="https://script.google.com/macros/s/...">
+        <button class="btn-sub" onclick="saveGasUrl()">保存する</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- スタッフ詳細モーダル -->
+<div class="detail-overlay" id="detail-overlay">
+  <div class="detail-modal">
+    <div class="dm-header">
+      <div class="dm-avatar" id="dm-avatar"></div>
+      <div><div class="dm-name" id="dm-name"></div><div class="dm-id" id="dm-id"></div></div>
+      <button class="dm-close" onclick="closeDetail()">✕</button>
+    </div>
+    <div class="dm-tabs">
+      <button class="dm-tab active" onclick="switchDmTab('kintai')">勤怠</button>
+      <button class="dm-tab" onclick="switchDmTab('nippo')">日報</button>
+      <button class="dm-tab" onclick="switchDmTab('shift')">シフト</button>
+    </div>
+    <div class="dm-body">
+      <div class="dm-panel active" id="dmp-kintai"></div>
+      <div class="dm-panel" id="dmp-nippo"></div>
+      <div class="dm-panel" id="dmp-shift"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 時間入力モーダル -->
+<div class="tim-overlay" id="tim-overlay">
+  <div class="tim-modal">
+    <h3 id="tim-title">出勤報告</h3>
+    <div class="tim-sub">実際の時刻を入力してください（ボタンを押した時刻が自動入力されています）</div>
+    <div id="tim-single" class="tim-section">
+      <div class="tim-section-title">実際の時刻</div>
+      <div class="tim-row">
+        <span class="tim-row-icon" id="tim-icon">🏢</span>
+        <span class="tim-row-label" id="tim-type-label">出勤時刻</span>
+        <input type="time" id="tim-time-input">
+      </div>
+      <div class="tim-logged" id="tim-logged-info"></div>
+    </div>
+    <div id="tim-kyukei" class="tim-section" style="display:none;">
+      <div class="tim-section-title">休憩の種別を選択</div>
+      <div class="tim-row" onclick="selectKyukei('start')" id="kyukei-start-row" style="cursor:pointer;">
+        <span class="tim-row-icon">☕</span>
+        <span class="tim-row-label">休憩開始</span>
+        <input type="time" id="tim-kyukei-start" onclick="event.stopPropagation();selectKyukei('start')">
+      </div>
+      <div class="tim-row" onclick="selectKyukei('end')" id="kyukei-end-row" style="cursor:pointer;margin-top:5px;">
+        <span class="tim-row-icon">✅</span>
+        <span class="tim-row-label">休憩終了</span>
+        <input type="time" id="tim-kyukei-end" onclick="event.stopPropagation();selectKyukei('end')">
+      </div>
+    </div>
+    <div class="tim-section">
+      <div class="tim-section-title">現在地</div>
+      <div id="tim-geo-status" class="geo-tag getting" style="display:none;">
+        <span class="geo-spinner"></span>&nbsp;取得中...
+      </div>
+      <div id="tim-geo-result" style="font-size:12px;color:var(--g600);margin-top:2px;display:none;"></div>
+    </div>
+    <div class="tim-section">
+      <div class="tim-section-title">メモ（任意）</div>
+      <textarea class="tim-note-area" id="tim-note" placeholder="備考があれば入力"></textarea>
+    </div>
+    <div class="tim-btns">
+      <button class="tim-confirm" id="tim-confirm-btn" onclick="confirmTimModal()">記録する</button>
+      <button class="tim-cancel" onclick="closeTimModal()">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<!-- シフトセル選択モーダル -->
+<div class="picker-overlay" id="picker-overlay">
+  <div class="picker-modal">
+    <h3 id="picker-title">シフトを選択</h3>
+    <div class="picker-date" id="picker-date-label"></div>
+    <div class="picker-grid" id="picker-options"></div>
+    <div class="picker-btns">
+      <button class="tim-confirm" onclick="confirmPicker()">決定する</button>
+      <button class="tim-cancel" onclick="closePicker()">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ============================================================
+// DATA
+// ============================================================
+const STAFF_DB = [
+  {id:'FI001',password:'1234',name:'小穴 将士',role:'staff'},
+  {id:'FI002',password:'1234',name:'柳 成幸',role:'staff'},
+  {id:'FI003',password:'1234',name:'村中 絵里奈',role:'staff'},
+  {id:'FI004',password:'1234',name:'小口 弥生',role:'staff'},
+  {id:'admin',password:'admin123',name:'永瀬',role:'admin'},
+];
+const TYPE_COLORS = {
+  '起床確認':'background:#fef3c7;color:#d97706',
+  '出発報告':'background:#dbeafe;color:#1a4480',
+  '出勤報告':'background:#dcfce7;color:#16a34a',
+  '休憩開始':'background:#f3f4f6;color:#4b5563',
+  '休憩終了':'background:#f3f4f6;color:#4b5563',
+  '退勤報告':'background:#f3e8ff;color:#7c3aed',
+  '日報':    'background:#ffe4e6;color:#e11d48',
+};
+// Default templates (overridden by localStorage)
+const DEFAULT_TEMPLATES = [
+  {id:'t1',name:'シフトA',start:'10:00',end:'19:00',color:'#2563c4'},
+  {id:'t2',name:'シフトB',start:'11:00',end:'20:00',color:'#16a34a'},
+  {id:'t3',name:'シフトC',start:'09:00',end:'18:00',color:'#d97706'},
+  {id:'off',name:'休み',start:'',end:'',color:'#9ca3af'},
+];
+
+let currentUser = null;
+let detailUserId = null;
+let _timType = '';
+let _kyukeiSelected = 'start';
+
+// localStorage
+let kintaiLog = JSON.parse(localStorage.getItem('fi_kintai') || '[]');
+let nippoLog  = JSON.parse(localStorage.getItem('fi_nippo')  || '[]');
+let shiftLog  = JSON.parse(localStorage.getItem('fi_shift')  || '[]');
+// shiftEntries: {userId, month:'2025/07', entries:{date:'2025/07/01', tmplId:'t1'}}
+let shiftEntries = JSON.parse(localStorage.getItem('fi_shift_entries') || '[]');
+let templates = JSON.parse(localStorage.getItem('fi_templates') || JSON.stringify(DEFAULT_TEMPLATES));
+
+// Current shift calendar state (staff)
+let shiftCalYear, shiftCalMonth;
+// Current admin cal state
+let adminCalYear, adminCalMonth;
+// Picker state
+let pickerDate = null;
+let pickerSelectedTmpl = null;
+// Temp draft for current staff's shift entries (before submit)
+let draftEntries = {}; // {date: tmplId}
+
+function save(){
+  localStorage.setItem('fi_kintai', JSON.stringify(kintaiLog));
+  localStorage.setItem('fi_nippo',  JSON.stringify(nippoLog));
+  localStorage.setItem('fi_shift',  JSON.stringify(shiftLog));
+  localStorage.setItem('fi_shift_entries', JSON.stringify(shiftEntries));
+  localStorage.setItem('fi_templates', JSON.stringify(templates));
+}
+
+// ============================================================
+// AUTH
+// ============================================================
+function doLogin(){
+  const id=document.getElementById('inp-id').value.trim();
+  const pw=document.getElementById('inp-pw').value;
+  const u=STAFF_DB.find(u=>u.id===id&&u.password===pw);
+  document.getElementById('login-err').style.display=u?'none':'block';
+  if(!u)return;
+  currentUser=u;
+  if(u.role==='admin'){showScreen('admin');initAdmin();}
+  else{showScreen('staff');initStaff();}
+}
+document.getElementById('inp-pw').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
+function doLogout(){currentUser=null;document.getElementById('inp-id').value='';document.getElementById('inp-pw').value='';showScreen('login');}
+function showScreen(n){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById('screen-'+n).classList.add('active');}
+
+// ============================================================
+// STAFF INIT
+// ============================================================
+function initStaff(){
+  document.getElementById('huser').textContent=currentUser.name+'さん';
+  startClock(); renderStaffStatus(); renderNippoHistory(); renderStaffTemplates(); initGeo();
+  const now=new Date();
+  // シフトは翌月を初期表示
+  const nm=new Date(now.getFullYear(),now.getMonth()+1,1);
+  shiftCalYear=nm.getFullYear(); shiftCalMonth=nm.getMonth();
+  loadDraftEntries();
+  renderShiftCal(); renderMyShiftHist();
+}
+let _clockTimer=null;
+function startClock(){
+  if(_clockTimer)clearInterval(_clockTimer);
+  const upd=()=>{
+    const n=new Date();
+    document.getElementById('disp-date').textContent=n.toLocaleDateString('ja-JP',{year:'numeric',month:'long',day:'numeric'});
+    document.getElementById('disp-wd').textContent='（'+'日月火水木金土'[n.getDay()]+'曜日）';
+    document.getElementById('disp-time').textContent=n.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  };
+  upd();_clockTimer=setInterval(upd,1000);
+}
+function todayStr(){const n=new Date();return `${n.getFullYear()}/${String(n.getMonth()+1).padStart(2,'0')}/${String(n.getDate()).padStart(2,'0')}`;}
+function nowTimeStr(){return new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'});}
+function nowHHMM(){const n=new Date();return String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');}
+function myTodayLog(){return kintaiLog.filter(r=>r.userId===currentUser.id&&r.date===todayStr());}
+
+function renderStaffStatus(){
+  const logs=myTodayLog();
+  const types=['起床確認','出発報告','出勤報告','退勤報告','日報'];
+  const icons={'起床確認':'🌅','出発報告':'🚗','出勤報告':'🏢','退勤報告':'🌙','日報':'📝'};
+  document.getElementById('status-badges').innerHTML=types.map(t=>{
+    const done=t==='日報'?nippoLog.some(r=>r.userId===currentUser.id&&r.date===todayStr()):logs.some(r=>r.type===t);
+    return `<span class="sbadge ${done?'done':'pend'}">${icons[t]} ${t}</span>`;
+  }).join('');
+  const map={kiso:'起床確認',shuppatsu:'出発報告',shukkin:'出勤報告',taikin:'退勤報告'};
+  Object.entries(map).forEach(([k,t])=>{
+    const b=document.getElementById('rbtn-'+k);
+    if(b)b.classList.toggle('done',logs.some(r=>r.type===t));
+  });
+  document.getElementById('rbtn-kyukei').classList.toggle('done',logs.some(r=>r.type==='休憩開始'||r.type==='休憩終了'));
+}
+function switchStaffTab(name){
+  document.querySelectorAll('.stab').forEach((t,i)=>{const ns=['report','nippo','shift'];t.classList.toggle('active',ns[i]===name);});
+  document.querySelectorAll('.staff-panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('spanel-'+name).classList.add('active');
+}
+
+// ============================================================
+// REPORT
+// ============================================================
+// ============================================================
+// GEOLOCATION
+// ============================================================
+let _geoCache = null;       // 取得済み位置情報キャッシュ（モーダル表示中に使う）
+let _geoWatchId = null;
+const GEO_TYPES = ['出勤報告','退勤報告','休憩開始','休憩終了']; // 位置情報を記録する種別
+
+function initGeo(){
+  if(!navigator.geolocation){return;}
+  // 許可状態を確認して、未決定ならバナーを表示
+  if(navigator.permissions){
+    navigator.permissions.query({name:'geolocation'}).then(r=>{
+      if(r.state==='prompt') document.getElementById('geo-banner').style.display='flex';
+      if(r.state==='granted') prefetchGeo();
+      r.onchange=()=>{
+        if(r.state==='granted'){document.getElementById('geo-banner').style.display='none'; prefetchGeo();}
+      };
+    });
+  } else {
+    // permissions API非対応ブラウザはバナー表示
+    document.getElementById('geo-banner').style.display='flex';
+  }
+}
+function requestGeo(){
+  document.getElementById('geo-banner').style.display='none';
+  prefetchGeo();
+}
+function prefetchGeo(){
+  if(!navigator.geolocation)return;
+  navigator.geolocation.getCurrentPosition(
+    pos=>{ _geoCache={lat:pos.coords.latitude,lng:pos.coords.longitude,acc:Math.round(pos.coords.accuracy)}; },
+    ()=>{ _geoCache=null; },
+    {timeout:8000,maximumAge:30000,enableHighAccuracy:true}
+  );
+}
+
+// モーダルを開いたとき位置情報を取得してUIに表示
+function startGeoForModal(){
+  const statusEl=document.getElementById('tim-geo-status');
+  const resultEl=document.getElementById('tim-geo-result');
+  _geoCache=null;
+  if(!navigator.geolocation){
+    statusEl.style.display='none'; resultEl.style.display='none'; return;
+  }
+  statusEl.className='geo-tag getting';
+  statusEl.innerHTML='<span class="geo-spinner"></span>&nbsp;取得中...';
+  statusEl.style.display='inline-flex';
+  resultEl.style.display='none';
+  navigator.geolocation.getCurrentPosition(
+    pos=>{
+      _geoCache={lat:pos.coords.latitude,lng:pos.coords.longitude,acc:Math.round(pos.coords.accuracy)};
+      statusEl.className='geo-tag ok';
+      statusEl.textContent='📍 位置情報を取得しました';
+      const mapsUrl=`https://www.google.com/maps?q=${_geoCache.lat},${_geoCache.lng}`;
+      resultEl.innerHTML=`緯度 ${_geoCache.lat.toFixed(5)}　経度 ${_geoCache.lng.toFixed(5)}　精度 ±${_geoCache.acc}m
+        &nbsp;<a class="geo-map-btn" href="${mapsUrl}" target="_blank">🗺 地図で確認</a>`;
+      resultEl.style.display='block';
+    },
+    err=>{
+      _geoCache=null;
+      statusEl.className='geo-tag ng';
+      statusEl.textContent= err.code===1 ? '📍 位置情報の許可が必要です' : '📍 取得できませんでした';
+      resultEl.style.display='none';
+    },
+    {timeout:10000,maximumAge:0,enableHighAccuracy:true}
+  );
+}
+
+function doReport(type,actualTime='',note=''){
+  const loggedTime=nowTimeStr();
+  const geo=GEO_TYPES.includes(type)?_geoCache:null;
+  const entry={
+    id:Date.now(),date:todayStr(),time:loggedTime,
+    actualTime:actualTime||loggedTime,
+    userId:currentUser.id,userName:currentUser.name,
+    type,note,
+    geo: geo ? {lat:geo.lat,lng:geo.lng,acc:geo.acc} : null
+  };
+  kintaiLog.push(entry);save();renderStaffStatus();
+  const geoMsg=geo?` (📍記録済み)`:'';
+  showToast(type+'を記録しました ✓'+geoMsg,'success');
+  sendToGas(entry);
+}
+
+// ============================================================
+// TIME INPUT MODAL
+// ============================================================
+const TIM_CONFIG={'出勤報告':{icon:'🏢',label:'出勤時刻',title:'🏢 出勤報告',color:'var(--blue)'},'退勤報告':{icon:'🌙',label:'退勤時刻',title:'🌙 退勤報告',color:'var(--purple)'},'休憩':{icon:'☕',label:'',title:'☕ 休憩',color:'var(--amber)'}};
+function openTimModal(type){
+  _timType=type;const cfg=TIM_CONFIG[type]||{};
+  document.getElementById('tim-title').textContent=cfg.title||type;
+  document.getElementById('tim-confirm-btn').style.background=cfg.color||'var(--blue)';
+  const now=nowHHMM();
+  if(type==='休憩'){
+    document.getElementById('tim-single').style.display='none';
+    document.getElementById('tim-kyukei').style.display='block';
+    document.getElementById('tim-kyukei-start').value=now;
+    document.getElementById('tim-kyukei-end').value=now;
+    const hasStart=myTodayLog().some(r=>r.type==='休憩開始');
+    selectKyukei(hasStart?'end':'start');
+  }else{
+    document.getElementById('tim-single').style.display='block';
+    document.getElementById('tim-kyukei').style.display='none';
+    document.getElementById('tim-icon').textContent=cfg.icon;
+    document.getElementById('tim-type-label').textContent=cfg.label;
+    document.getElementById('tim-time-input').value=now;
+    const prev=myTodayLog().find(r=>r.type===type);
+    document.getElementById('tim-logged-info').textContent=prev?`前回の記録：${prev.actualTime}（報告時刻：${prev.time}）`:'';
+  }
+  document.getElementById('tim-note').value='';
+  // 位置情報の取得を開始（出勤・退勤・休憩のみ）
+  if(GEO_TYPES.some(t=>t.startsWith(type.replace('休憩','休憩')))||type==='休憩'){
+    startGeoForModal();
+  } else {
+    document.getElementById('tim-geo-status').style.display='none';
+    document.getElementById('tim-geo-result').style.display='none';
+  }
+  document.getElementById('tim-overlay').classList.add('open');
+}
+function selectKyukei(which){
+  _kyukeiSelected=which;
+  document.getElementById('kyukei-start-row').style.outline=which==='start'?'2px solid var(--blue)':'';
+  document.getElementById('kyukei-end-row').style.outline=which==='end'?'2px solid var(--blue)':'';
+}
+function confirmTimModal(){
+  const note=document.getElementById('tim-note').value.trim();
+  if(_timType==='休憩'){
+    const type=_kyukeiSelected==='start'?'休憩開始':'休憩終了';
+    const actual=_kyukeiSelected==='start'?document.getElementById('tim-kyukei-start').value:document.getElementById('tim-kyukei-end').value;
+    doReport(type,actual,note);
+  }else{doReport(_timType,document.getElementById('tim-time-input').value,note);}
+  closeTimModal();
+}
+function closeTimModal(){document.getElementById('tim-overlay').classList.remove('open');}
+document.getElementById('tim-overlay').addEventListener('click',function(e){if(e.target===this)closeTimModal();});
+
+// ============================================================
+// NIPPO
+// ============================================================
+function submitNippo(){
+  const txt=document.getElementById('nippo-txt').value.trim();
+  if(!txt){showToast('内容を入力してください','error');return;}
+  const entry={id:Date.now(),date:todayStr(),time:nowTimeStr(),userId:currentUser.id,userName:currentUser.name,text:txt};
+  nippoLog.push(entry);save();
+  doReport('日報',nowTimeStr(),txt.slice(0,30));
+  document.getElementById('nippo-txt').value='';
+  renderNippoHistory();showToast('日報を送信しました ✓','success');
+}
+function renderNippoHistory(){
+  if(!currentUser)return;
+  const mine=nippoLog.filter(r=>r.userId===currentUser.id).sort((a,b)=>b.id-a.id).slice(0,10);
+  document.getElementById('nippo-history').innerHTML=mine.length
+    ?mine.map(r=>`<div class="dn-item"><div class="dn-date">${r.date} ${r.time}</div><div class="dn-text">${escHtml(r.text)}</div></div>`).join('')
+    :'<div style="color:var(--g400);font-size:13px;">まだ日報がありません</div>';
+}
+
+// ============================================================
+// SHIFT CALENDAR (staff)
+// ============================================================
+function loadDraftEntries(){
+  // 現在の月の提出済みエントリを読み込む
+  const monthStr=`${shiftCalYear}/${String(shiftCalMonth+1).padStart(2,'0')}`;
+  const existing=shiftEntries.find(e=>e.userId===currentUser.id&&e.month===monthStr);
+  draftEntries={};
+  if(existing)existing.entries.forEach(e=>{draftEntries[e.date]=e.tmplId;});
+}
+function shiftCalPrev(){
+  shiftCalMonth--;if(shiftCalMonth<0){shiftCalMonth=11;shiftCalYear--;}
+  loadDraftEntries();renderShiftCal();
+}
+function shiftCalNext(){
+  shiftCalMonth++;if(shiftCalMonth>11){shiftCalMonth=0;shiftCalYear++;}
+  loadDraftEntries();renderShiftCal();
+}
+// ============================================================
+// TEMPLATE MANAGEMENT (staff side)
+// ============================================================
+function renderStaffTemplates(){
+  const el=document.getElementById('staff-tmpl-compact');
+  if(!el)return;
+  el.innerHTML=templates.map(t=>`
+    <div class="tmpl-chip" style="background:${t.color}18;border-color:${t.color}40;color:${t.color};">
+      <div style="width:8px;height:8px;border-radius:2px;background:${t.color};flex-shrink:0;"></div>
+      <span>${t.name}${t.start?' '+t.start:''}${t.end?'-'+t.end:''}</span>
+      ${t.id==='off'?'':
+        `<button class="tmpl-chip-del" onclick="staffDeleteTemplate('${t.id}')" title="削除">×</button>`}
+    </div>`).join('');
+}
+function toggleTmplForm(show){
+  document.getElementById('staff-tmpl-form').style.display=show?'block':'none';
+  document.getElementById('tmpl-add-toggle-btn').style.display=show?'none':'block';
+  if(show)document.getElementById('s-tmpl-name').focus();
+}
+function staffAddTemplate(){
+  const name=document.getElementById('s-tmpl-name').value.trim();
+  const start=document.getElementById('s-tmpl-start').value;
+  const end=document.getElementById('s-tmpl-end').value;
+  if(!name||!start||!end){showToast('名前・開始・終了時刻を入力してください','error');return;}
+  const colors=['#2563c4','#16a34a','#d97706','#7c3aed','#0d9488','#dc2626','#db2777'];
+  const color=colors[templates.filter(t=>t.id!=='off').length%colors.length];
+  templates.push({id:'t'+Date.now(),name,start,end,color});
+  save();renderStaffTemplates();renderShiftCal();
+  renderTemplates(); // 管理者側も同期
+  document.getElementById('s-tmpl-name').value='';
+  toggleTmplForm(false);
+  showToast(`「${name}」を追加しました ✓`,'success');
+}
+function staffDeleteTemplate(id){
+  templates=templates.filter(t=>t.id!==id);
+  save();renderStaffTemplates();renderShiftCal();renderTemplates();
+  showToast('削除しました','success');
+}
+
+// ============================================================
+// INPUT MODE (single / bulk)
+// ============================================================
+let inputMode='single'; // 'single' | 'bulk'
+let bulkSelected=new Set(); // 一括選択中の日付セット
+
+function setMode(mode){
+  inputMode=mode;
+  clearBulkSelection();
+  document.getElementById('mode-btn-single').classList.toggle('active',mode==='single');
+  document.getElementById('mode-btn-bulk').classList.toggle('active',mode==='bulk');
+  document.getElementById('bulk-hint').style.display=mode==='bulk'?'block':'none';
+  renderShiftCal();
+}
+function clearBulkSelection(){
+  bulkSelected=new Set();
+  document.getElementById('bulk-bar').style.display='none';
+  renderShiftCal();
+}
+function updateBulkBar(){
+  const n=bulkSelected.size;
+  const bar=document.getElementById('bulk-bar');
+  if(n===0){bar.style.display='none';}
+  else{bar.style.display='flex';document.getElementById('bulk-count-label').textContent=`${n}日選択中`;}
+}
+
+// ============================================================
+// SHIFT CALENDAR (staff)
+// ============================================================
+function renderShiftCal(){
+  const monthStr=`${shiftCalYear}年${shiftCalMonth+1}月`;
+  document.getElementById('shift-cal-title').textContent=monthStr;
+  // Legend
+  document.getElementById('shift-cal-legend').innerHTML=
+    templates.map(t=>`<div class="legend-item"><div class="legend-dot" style="background:${t.color};"></div>${t.name}${t.start?` ${t.start}-${t.end}`:''}</div>`).join('');
+  // Grid
+  const dows=['日','月','火','水','木','金','土'];
+  let html=dows.map((d,i)=>`<div class="cal-dow ${i===0?'sun':i===6?'sat':''}">${d}</div>`).join('');
+  const firstDay=new Date(shiftCalYear,shiftCalMonth,1).getDay();
+  const daysInMonth=new Date(shiftCalYear,shiftCalMonth+1,0).getDate();
+  for(let i=0;i<firstDay;i++)html+=`<div class="cal-cell empty"></div>`;
+  const todayD=new Date();
+  for(let d=1;d<=daysInMonth;d++){
+    const dt=new Date(shiftCalYear,shiftCalMonth,d);
+    const dow=dt.getDay();
+    const dateStr=`${shiftCalYear}/${String(shiftCalMonth+1).padStart(2,'0')}/${String(d).padStart(2,'0')}`;
+    const isToday=dt.toDateString()===todayD.toDateString();
+    const tmplId=draftEntries[dateStr];
+    const tmpl=templates.find(t=>t.id===tmplId);
+    const isBulkSel=bulkSelected.has(dateStr);
+    let cls='cal-cell';
+    if(isToday)cls+=' today';
+    if(dow===0)cls+=' weekend';
+    if(dow===6)cls+=' sat-cell';
+    if(isBulkSel)cls+=' bulk-selected';
+    else if(tmpl&&tmpl.id!=='off')cls+=' has-shift';
+    else if(tmpl&&tmpl.id==='off')cls+=' off-day';
+    const chipHtml=tmpl&&!isBulkSel
+      ?`<span class="cal-shift-chip" style="background:${tmpl.color}20;color:${tmpl.color};">${tmpl.name}${tmpl.start?' '+tmpl.start:''}</span>`
+      :(isBulkSel?`<span class="cal-shift-chip" style="background:#1a448020;color:#1a4480;">✓</span>`:'');
+    const clickFn=inputMode==='bulk'?`toggleBulkDate('${dateStr}')`:`openPicker('${dateStr}')`;
+    html+=`<div class="${cls}" onclick="${clickFn}">
+      <span class="cal-day-num">${d}</span>${chipHtml}
+    </div>`;
+  }
+  document.getElementById('shift-cal-grid').innerHTML=html;
+}
+
+// ============================================================
+// SHIFT PICKER MODAL
+// ============================================================
+function openPicker(dateStr){
+  pickerDate=dateStr;
+  pickerSelectedTmpl=draftEntries[dateStr]||null;
+  const parts=dateStr.split('/');
+  const dt=new Date(parseInt(parts[0]),parseInt(parts[1])-1,parseInt(parts[2]));
+  const wds='日月火水木金土';
+  document.getElementById('picker-title').textContent='シフトを選択';
+  document.getElementById('picker-date-label').textContent=`${parts[1]}/${parts[2]}（${wds[dt.getDay()]}曜日）`;
+  renderPickerOptions();
+  document.getElementById('picker-overlay').classList.add('open');
+}
+function toggleBulkDate(dateStr){
+  if(bulkSelected.has(dateStr))bulkSelected.delete(dateStr);
+  else bulkSelected.add(dateStr);
+  updateBulkBar();
+  renderShiftCal();
+}
+function openBulkPicker(){
+  if(bulkSelected.size===0){showToast('日付を選択してください','error');return;}
+  pickerDate=null; // bulkモード
+  pickerSelectedTmpl=null;
+  const dates=[...bulkSelected].sort();
+  document.getElementById('picker-title').textContent=`${bulkSelected.size}日分をまとめて設定`;
+  document.getElementById('picker-date-label').textContent=
+    dates.map(d=>d.slice(5)).join('・')+(dates.length>6?'…':'');
+  renderPickerOptions();
+  document.getElementById('picker-overlay').classList.add('open');
+}
+function renderPickerOptions(){
+  document.getElementById('picker-options').innerHTML=templates.map(t=>{
+    const sel=t.id===pickerSelectedTmpl;
+    const cls=sel?(t.id==='off'?'picker-option off-selected':'picker-option selected'):'picker-option';
+    return `<div class="${cls}" onclick="selectPickerTmpl('${t.id}')">
+      <div class="picker-dot" style="background:${t.color};"></div>
+      <span class="picker-label">${t.name}</span>
+      <span class="picker-time">${t.start?t.start+' - '+t.end:''}</span>
+    </div>`;
+  }).join('');
+}
+function selectPickerTmpl(tmplId){pickerSelectedTmpl=tmplId;renderPickerOptions();}
+function confirmPicker(){
+  if(!pickerSelectedTmpl){showToast('シフトを選択してください','error');return;}
+  if(pickerDate){
+    // 1日個別
+    draftEntries[pickerDate]=pickerSelectedTmpl;
+  } else {
+    // 一括適用
+    bulkSelected.forEach(d=>{draftEntries[d]=pickerSelectedTmpl;});
+    const n=bulkSelected.size;
+    clearBulkSelection();
+    showToast(`${n}日分に「${templates.find(t=>t.id===pickerSelectedTmpl)?.name}」を適用しました ✓`,'success');
+  }
+  renderShiftCal();closePicker();
+}
+function closePicker(){document.getElementById('picker-overlay').classList.remove('open');}
+document.getElementById('picker-overlay').addEventListener('click',function(e){if(e.target===this)closePicker();});
+
+function submitShift(){
+  const monthStr=`${shiftCalYear}/${String(shiftCalMonth+1).padStart(2,'0')}`;
+  const entries=Object.entries(draftEntries).map(([date,tmplId])=>({date,tmplId}));
+  if(!entries.length){showToast('シフトを入力してください','error');return;}
+  // Remove old entry for this user+month, add new
+  shiftEntries=shiftEntries.filter(e=>!(e.userId===currentUser.id&&e.month===monthStr));
+  shiftEntries.push({id:Date.now(),userId:currentUser.id,userName:currentUser.name,month:monthStr,submitted:todayStr(),entries});
+  save();renderMyShiftHist();
+  showToast(`${shiftCalYear}年${shiftCalMonth+1}月のシフトを提出しました ✓`,'success');
+  sendToGas({type:'シフト申請',userId:currentUser.id,userName:currentUser.name,month:monthStr,entries});
+}
+
+function renderMyShiftHist(){
+  if(!currentUser)return;
+  const mine=shiftEntries.filter(e=>e.userId===currentUser.id).sort((a,b)=>b.id-a.id).slice(0,6);
+  const el=document.getElementById('my-shift-hist');
+  if(!mine.length){el.innerHTML='<div style="color:var(--g400);font-size:13px;">まだ提出がありません</div>';return;}
+  el.innerHTML=mine.map(r=>{
+    const work=r.entries.filter(e=>e.tmplId!=='off').length;
+    return `<div style="padding:8px 0;border-bottom:1px solid var(--g200);font-size:13px;">
+      <span style="font-weight:600;color:var(--blue);">${r.month}</span>
+      <span style="color:var(--g400);margin-left:8px;">出勤予定 ${work}日　提出：${r.submitted}</span>
+    </div>`;
+  }).join('');
+}
+
+// ============================================================
+// GAS
+// ============================================================
+async function sendToGas(entry){
+  const url=localStorage.getItem('fi_gas_url');if(!url)return;
+  try{await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(entry),mode:'no-cors'});}
+  catch(e){console.log('GAS error',e);}
+}
+
+// ============================================================
+// ADMIN INIT
+// ============================================================
+function initAdmin(){
+  document.getElementById('today-date-lbl').textContent=new Date().toLocaleDateString('ja-JP',{month:'long',day:'numeric'});
+  document.getElementById('gas-url-input').value=localStorage.getItem('fi_gas_url')||'';
+  const now=new Date();
+  adminCalYear=now.getFullYear();adminCalMonth=now.getMonth();
+  renderAdminToday();renderTaskBoard();renderStaffMaster();
+  renderAdminLog();renderAdminCal();renderTemplates();initLogFilter();
+}
+function switchAdminTab(name){
+  const names=['today','taskboard','staff','log','shift','settings'];
+  document.querySelectorAll('.atab').forEach((t,i)=>t.classList.toggle('active',names[i]===name));
+  document.querySelectorAll('.apanel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('apanel-'+name).classList.add('active');
+  if(name==='taskboard')renderTaskBoard();
+  if(name==='shift')renderAdminCal();
+}
+
+// ============================================================
+// TASK BOARD
+// ============================================================
+function renderTaskBoard(){
+  const today=todayStr();
+  const staffList=STAFF_DB.filter(u=>u.role==='staff');
+  const todayEnt=kintaiLog.filter(r=>r.date===today);
+  const nm=new Date();nm.setMonth(nm.getMonth()+1);
+  const nextMonth=`${nm.getFullYear()}/${String(nm.getMonth()+1).padStart(2,'0')}`;
+  const currentMonth=`${new Date().getFullYear()}/${String(new Date().getMonth()+1).padStart(2,'0')}`;
+
+  // --- 本日の未報告 ---
+  const DAILY_CHECKS=['起床確認','出発報告','出勤報告','退勤報告','日報'];
+  const urgentItems=[]; const doneItems=[];
+  staffList.forEach(u=>{
+    const ul=todayEnt.filter(r=>r.userId===u.id);
+    const nippoOk=nippoLog.some(r=>r.userId===u.id&&r.date===today);
+    const missing=DAILY_CHECKS.filter(t=>{
+      if(t==='日報')return!nippoOk;
+      return!ul.some(r=>r.type===t);
+    });
+    if(missing.length>0)urgentItems.push({user:u,missing});
+    else doneItems.push({user:u});
+  });
+
+  // --- シフト未提出（翌月） ---
+  const shiftMissing=staffList.filter(u=>!shiftEntries.some(e=>e.userId===u.id&&e.month===nextMonth));
+  const shiftDone=staffList.filter(u=>shiftEntries.some(e=>e.userId===u.id&&e.month===nextMonth));
+
+  // --- 今月シフト未提出 ---
+  const shiftMissingCurrent=staffList.filter(u=>!shiftEntries.some(e=>e.userId===u.id&&e.month===currentMonth));
+
+  let html=``;
+
+  // Section: 今日の未報告
+  html+=`<div style="margin-bottom:16px;">
+    <div class="task-section-title">
+      ⚠️ 本日の未報告者
+      <span class="task-count-badge ${urgentItems.length===0?'ok':''}">${urgentItems.length===0?'全員完了':urgentItems.length+'名'}</span>
+    </div>`;
+  if(urgentItems.length===0){
+    html+=`<div class="task-item ok"><div style="font-size:13px;color:var(--green);">✓ 全スタッフの本日報告が完了しています</div></div>`;
+  }else{
+    html+=urgentItems.map(({user,missing})=>`
+      <div class="task-item urgent">
+        <div class="task-avatar">${user.name[0]}</div>
+        <div class="task-info">
+          <div class="task-name">${user.name}</div>
+          <div class="task-detail">未報告：${missing.join('・')}</div>
+        </div>
+        <div class="task-actions">
+          <button class="remind-btn" onclick="sendRemind('${user.id}','今日の報告が未完了です。確認をお願いします！')">催促</button>
+          <button class="btn-sm" style="background:var(--blue-ll);color:var(--blue);" onclick="openDetail('${user.id}')">詳細</button>
+        </div>
+      </div>`).join('');
+    html+=doneItems.map(({user})=>`
+      <div class="task-item ok">
+        <div class="task-avatar">${user.name[0]}</div>
+        <div class="task-info"><div class="task-name">${user.name}</div></div>
+        <span class="done-badge">完了</span>
+      </div>`).join('');
+  }
+  html+=`</div>`;
+
+  // Section: 翌月シフト未提出
+  const nmLabel=`${nm.getFullYear()}年${nm.getMonth()+1}月`;
+  html+=`<div style="margin-bottom:16px;">
+    <div class="task-section-title">
+      📅 ${nmLabel}シフト未提出
+      <span class="task-count-badge ${shiftMissing.length===0?'ok':''}">${shiftMissing.length===0?'全員提出済':shiftMissing.length+'名'}</span>
+    </div>`;
+  if(shiftMissing.length===0){
+    html+=`<div class="task-item ok"><div style="font-size:13px;color:var(--green);">✓ 全スタッフのシフトが提出されています</div></div>`;
+  }else{
+    html+=shiftMissing.map(u=>`
+      <div class="task-item warn">
+        <div class="task-avatar">${u.name[0]}</div>
+        <div class="task-info">
+          <div class="task-name">${u.name}</div>
+          <div class="task-detail">${nmLabel}のシフトが未提出です</div>
+        </div>
+        <button class="remind-btn" onclick="sendRemind('${u.id}','${nmLabel}のシフト提出をお願いします！')">催促</button>
+      </div>`).join('');
+    html+=shiftDone.map(u=>`
+      <div class="task-item ok">
+        <div class="task-avatar">${u.name[0]}</div>
+        <div class="task-info">
+          <div class="task-name">${u.name}</div>
+          <div class="task-detail">提出済み</div>
+        </div>
+        <span class="done-badge">提出済</span>
+      </div>`).join('');
+  }
+  html+=`</div>`;
+
+  // Section: 今月シフト（参考）
+  if(shiftMissingCurrent.length>0){
+    const cmLabel=`${new Date().getFullYear()}年${new Date().getMonth()+1}月`;
+    html+=`<div style="margin-bottom:16px;">
+      <div class="task-section-title">📋 ${cmLabel}シフト未提出（今月分）<span class="task-count-badge">${shiftMissingCurrent.length}名</span></div>
+      ${shiftMissingCurrent.map(u=>`
+        <div class="task-item warn">
+          <div class="task-avatar">${u.name[0]}</div>
+          <div class="task-info"><div class="task-name">${u.name}</div><div class="task-detail">${cmLabel}のシフトが未提出</div></div>
+          <button class="remind-btn" onclick="sendRemind('${u.id}','${cmLabel}のシフト提出をお願いします！')">催促</button>
+        </div>`).join('')}
+    </div>`;
+  }
+
+  document.getElementById('taskboard-content').innerHTML=html;
+}
+
+function sendRemind(userId,msg){
+  // LINEが繋がっていればpush通知。繋がっていなければトーストで確認
+  showToast(`${STAFF_DB.find(u=>u.id===userId)?.name}さんに催促を送信しました（要GAS設定）`,'success');
+  sendToGas({type:'リマインド',toUserId:userId,message:msg});
+}
+
+// ============================================================
+// ADMIN TODAY
+// ============================================================
+function renderAdminToday(){
+  const today=todayStr();
+  const staffList=STAFF_DB.filter(u=>u.role==='staff');
+  const todayEnt=kintaiLog.filter(r=>r.date===today);
+  const shukkinIds=[...new Set(todayEnt.filter(r=>r.type==='出勤報告').map(r=>r.userId))];
+  const taikinIds=[...new Set(todayEnt.filter(r=>r.type==='退勤報告').map(r=>r.userId))];
+  const nippoIds=[...new Set(nippoLog.filter(r=>r.date===today).map(r=>r.userId))];
+  const missIds=staffList.filter(u=>!shukkinIds.includes(u.id)).map(u=>u.id);
+  document.getElementById('sc-shukkin').textContent=shukkinIds.length;
+  document.getElementById('sc-taikin').textContent=taikinIds.length;
+  document.getElementById('sc-miss').textContent=missIds.length;
+  document.getElementById('sc-nippo').textContent=nippoIds.length;
+  const CHECKS=['起床確認','出発報告','出勤報告','退勤報告','日報'];
+  document.getElementById('today-staff-list').innerHTML=staffList.map(u=>{
+    const ul=todayEnt.filter(r=>r.userId===u.id);
+    const checks=CHECKS.map(t=>{
+      const done=t==='日報'?nippoLog.some(r=>r.userId===u.id&&r.date===today):ul.some(r=>r.type===t);
+      return `<span class="ck ${done?'ok':'ng'}">${t}</span>`;
+    }).join('');
+    return `<div class="staff-row-a" onclick="openDetail('${u.id}')">
+      <div class="avatar">${u.name[0]}</div>
+      <div class="sname">${u.name}</div>
+      <div class="check-row">${checks}</div>
+      <div class="arrow-r">›</div>
+    </div>`;
+  }).join('');
+}
+
+// ============================================================
+// STAFF MASTER
+// ============================================================
+function renderStaffMaster(){
+  document.getElementById('staff-master-list').innerHTML=STAFF_DB.filter(u=>u.role==='staff').map(u=>{
+    const total=kintaiLog.filter(r=>r.userId===u.id&&r.type==='出勤報告').length;
+    const nc=nippoLog.filter(r=>r.userId===u.id).length;
+    const sc=shiftEntries.filter(e=>e.userId===u.id).length;
+    return `<div class="staff-row-a" onclick="openDetail('${u.id}')">
+      <div class="avatar">${u.name[0]}</div>
+      <div style="flex:1;"><div class="sname">${u.name} <span style="font-size:11px;color:var(--g400);font-weight:400;">ID：${u.id}</span></div>
+      <div style="font-size:11px;color:var(--g400);margin-top:2px;">出勤実績 ${total}日　日報 ${nc}件　シフト ${sc}件</div></div>
+      <div class="arrow-r">›</div>
+    </div>`;
+  }).join('');
+}
+
+// ============================================================
+// ADMIN LOG
+// ============================================================
+function initLogFilter(){
+  const sel=document.getElementById('log-filter-user');
+  STAFF_DB.filter(u=>u.role==='staff').forEach(u=>{
+    const o=document.createElement('option');o.value=u.id;o.textContent=u.name;sel.appendChild(o);
+  });
+}
+function geoTag(r){
+  if(!r.geo) return `<span class="geo-tag ng">📍 なし</span>`;
+  const url=`https://www.google.com/maps?q=${r.geo.lat},${r.geo.lng}`;
+  return `<a class="geo-map-btn" href="${url}" target="_blank">📍 地図で見る</a>
+    <span style="font-size:10px;color:var(--g400);">±${r.geo.acc}m</span>`;
+}
+function renderAdminLog(){
+  const fu=document.getElementById('log-filter-user').value;
+  const ft=document.getElementById('log-filter-type').value;
+  let logs=[...kintaiLog].sort((a,b)=>b.id-a.id);
+  if(fu)logs=logs.filter(r=>r.userId===fu);
+  if(ft)logs=logs.filter(r=>r.type===ft);
+  logs=logs.slice(0,100);
+  const hasT=['出勤報告','退勤報告','休憩開始','休憩終了'];
+  document.getElementById('admin-log-list').innerHTML=logs.length
+    ?logs.map(r=>{
+        const showT=hasT.includes(r.type);
+        const diff=showT&&r.actualTime&&r.actualTime!==r.time;
+        return `<div class="log-item">
+          <div style="min-width:72px;flex-shrink:0;"><div class="log-time">${r.date}</div><div style="font-size:10px;color:var(--g400);">${r.time}</div></div>
+          <span class="log-badge" style="${TYPE_COLORS[r.type]||''}">${r.type}</span>
+          <div style="flex:1;min-width:0;">
+            <span class="log-name">${r.userName}</span>
+            ${showT?`<div style="font-size:10px;margin-top:1px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <span style="color:var(--green);font-weight:600;">実際 ${r.actualTime||r.time}</span>
+              ${diff?`<span style="color:var(--g400);">報告 ${r.time}</span>`:''}
+              ${geoTag(r)}
+            </div>`:''}
+            ${r.note?`<div style="font-size:11px;color:var(--g400);">${escHtml(r.note)}</div>`:''}
+          </div>
+        </div>`;
+      }).join('')
+    :'<div style="text-align:center;padding:28px;color:var(--g400);">記録がありません</div>';
+}
+
+// ============================================================
+// ADMIN SHIFT CALENDAR
+// ============================================================
+function adminCalPrev(){adminCalMonth--;if(adminCalMonth<0){adminCalMonth=11;adminCalYear--;}renderAdminCal();}
+function adminCalNext(){adminCalMonth++;if(adminCalMonth>11){adminCalMonth=0;adminCalYear++;}renderAdminCal();}
+function renderAdminCal(){
+  const monthStr=`${adminCalYear}/${String(adminCalMonth+1).padStart(2,'0')}`;
+  document.getElementById('admin-cal-title').textContent=`${adminCalYear}年${adminCalMonth+1}月`;
+  // Staff color map
+  const staffList=STAFF_DB.filter(u=>u.role==='staff');
+  const staffColors=['#2563c4','#16a34a','#d97706','#7c3aed','#0d9488'];
+  const staffColorMap={};
+  staffList.forEach((u,i)=>{staffColorMap[u.id]=staffColors[i%staffColors.length];});
+  // Legend
+  document.getElementById('admin-cal-legend').innerHTML=staffList.map(u=>`<div class="legend-item"><div class="legend-dot" style="background:${staffColorMap[u.id]};"></div>${u.name}</div>`).join('');
+  // Grid
+  const firstDay=new Date(adminCalYear,adminCalMonth,1).getDay();
+  const daysInMonth=new Date(adminCalYear,adminCalMonth+1,0).getDate();
+  const todayD=new Date();
+  // Get all entries for this month
+  const monthEntries=shiftEntries.filter(e=>e.month===monthStr);
+  let html='';
+  for(let i=0;i<firstDay;i++)html+=`<div class="admin-cal-cell empty"></div>`;
+  for(let d=1;d<=daysInMonth;d++){
+    const dt=new Date(adminCalYear,adminCalMonth,d);
+    const dateStr=`${adminCalYear}/${String(adminCalMonth+1).padStart(2,'0')}/${String(d).padStart(2,'0')}`;
+    const isToday=dt.toDateString()===todayD.toDateString();
+    const dow=dt.getDay();
+    let chips='';
+    monthEntries.forEach(se=>{
+      const entry=se.entries.find(e=>e.date===dateStr);
+      if(!entry||entry.tmplId==='off')return;
+      const tmpl=templates.find(t=>t.id===entry.tmplId);
+      const user=STAFF_DB.find(u=>u.id===se.userId);
+      if(!tmpl||!user)return;
+      chips+=`<div class="acal-chip" style="background:${staffColorMap[se.userId]}20;color:${staffColorMap[se.userId]};">${user.name}${tmpl.start?' '+tmpl.start:''}</div>`;
+    });
+    html+=`<div class="admin-cal-cell ${isToday?'today':''}" onclick="showDayDetail('${dateStr}')">
+      <div class="acal-day" style="${dow===0?'color:var(--red);':dow===6?'color:var(--blue);':''}">${d}</div>${chips}
+    </div>`;
+  }
+  document.getElementById('admin-cal-grid').innerHTML=html;
+  document.getElementById('admin-shift-detail').innerHTML='';
+}
+function showDayDetail(dateStr){
+  const monthStr=dateStr.slice(0,7);
+  const monthEntries=shiftEntries.filter(e=>e.month===monthStr);
+  const rows=[];
+  STAFF_DB.filter(u=>u.role==='staff').forEach(u=>{
+    const se=monthEntries.find(e=>e.userId===u.id);
+    const entry=se?se.entries.find(e=>e.date===dateStr):null;
+    const tmpl=entry?templates.find(t=>t.id===entry.tmplId):null;
+    rows.push({user:u,tmpl,submitted:!!se});
+  });
+  const [y,m,d]=dateStr.split('/');
+  const dt=new Date(parseInt(y),parseInt(m)-1,parseInt(d));
+  const wds='日月火水木金土';
+  document.getElementById('admin-shift-detail').innerHTML=`
+    <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:8px;">${m}/${d}（${wds[dt.getDay()]}）のシフト</div>
+    ${rows.map(({user,tmpl,submitted})=>`
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--g100);">
+        <div class="avatar" style="width:28px;height:28px;font-size:11px;">${user.name[0]}</div>
+        <span style="font-size:13px;font-weight:600;min-width:40px;">${user.name}</span>
+        ${tmpl
+          ?`<span style="font-size:12px;font-weight:600;color:${tmpl.id==='off'?'var(--g400)':'var(--blue)'};">${tmpl.name}${tmpl.start?' '+tmpl.start+'-'+tmpl.end:''}</span>`
+          :`<span style="font-size:12px;color:var(--g400);">${submitted?'未入力':'未提出'}</span>`}
+      </div>`).join('')}`;
+}
+
+// ============================================================
+// TEMPLATES
+// ============================================================
+function renderTemplates(){
+  document.getElementById('tmpl-list').innerHTML=templates.map(t=>`
+    <div class="tmpl-item">
+      <div class="tmpl-color" style="background:${t.color};"></div>
+      <span class="tmpl-name">${t.name}</span>
+      <span class="tmpl-time">${t.start?t.start+' - '+t.end:''}</span>
+      ${t.id==='off'?'':`<button class="tmpl-del" onclick="deleteTemplate('${t.id}')" title="削除">×</button>`}
+    </div>`).join('');
+}
+function addTemplate(){
+  const name=document.getElementById('tmpl-name-input').value.trim();
+  const start=document.getElementById('tmpl-start-input').value;
+  const end=document.getElementById('tmpl-end-input').value;
+  if(!name||!start||!end){showToast('名前・開始・終了時刻を入力してください','error');return;}
+  const colors=['#2563c4','#16a34a','#d97706','#7c3aed','#0d9488','#dc2626','#db2777'];
+  const color=colors[templates.length%colors.length];
+  templates.push({id:'t'+Date.now(),name,start,end,color});
+  save();renderTemplates();
+  document.getElementById('tmpl-name-input').value='';
+  showToast(`「${name}」を追加しました ✓`,'success');
+}
+function deleteTemplate(id){
+  templates=templates.filter(t=>t.id!==id);
+  save();renderTemplates();showToast('削除しました','success');
+}
+function saveGasUrl(){
+  localStorage.setItem('fi_gas_url',document.getElementById('gas-url-input').value.trim());
+  showToast('GAS URLを保存しました ✓','success');
+}
+
+// ============================================================
+// STAFF DETAIL MODAL
+// ============================================================
+function openDetail(uid){
+  detailUserId=uid;
+  const u=STAFF_DB.find(u=>u.id===uid);
+  document.getElementById('dm-avatar').textContent=u.name[0];
+  document.getElementById('dm-name').textContent=u.name;
+  document.getElementById('dm-id').textContent='ID：'+uid;
+  switchDmTab('kintai');
+  document.getElementById('detail-overlay').classList.add('open');
+  document.body.style.overflow='hidden';
+}
+function closeDetail(){document.getElementById('detail-overlay').classList.remove('open');document.body.style.overflow='';}
+document.getElementById('detail-overlay').addEventListener('click',function(e){if(e.target===this)closeDetail();});
+function switchDmTab(name){
+  document.querySelectorAll('.dm-tab').forEach((t,i)=>{const ns=['kintai','nippo','shift'];t.classList.toggle('active',ns[i]===name);});
+  document.querySelectorAll('.dm-panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('dmp-'+name).classList.add('active');
+  if(name==='kintai')renderDmKintai();
+  if(name==='nippo')renderDmNippo();
+  if(name==='shift')renderDmShift();
+}
+function renderDmKintai(){
+  const uid=detailUserId;const today=todayStr();
+  const logs=kintaiLog.filter(r=>r.userId===uid);
+  const todayLogs=logs.filter(r=>r.date===today);
+  const shukkinDays=[...new Set(logs.filter(r=>r.type==='出勤報告').map(r=>r.date))].length;
+  const nippoCount=nippoLog.filter(r=>r.userId===uid).length;
+  const nippoToday=nippoLog.some(r=>r.userId===uid&&r.date===today);
+  const CHECKS=['起床確認','出発報告','出勤報告','休憩開始','退勤報告'];
+  const todayStatus=CHECKS.map(t=>`<span class="ck ${todayLogs.some(r=>r.type===t)?'ok':'ng'}">${t}</span>`).join('');
+  const recent=[...logs].sort((a,b)=>b.id-a.id).slice(0,20);
+  const hasT=['出勤報告','退勤報告','休憩開始','休憩終了'];
+  document.getElementById('dmp-kintai').innerHTML=`
+    <div class="dk-grid">
+      <div class="dk-card"><div class="dkv">${shukkinDays}</div><div class="dkl">出勤実績（日）</div></div>
+      <div class="dk-card"><div class="dkv">${nippoCount}</div><div class="dkl">日報提出数</div></div>
+      <div class="dk-card"><div class="dkv" style="color:${nippoToday?'var(--green)':'var(--amber)'};">${nippoToday?'済':'未'}</div><div class="dkl">本日の日報</div></div>
+    </div>
+    <div style="margin-bottom:10px;"><div style="font-size:11px;font-weight:700;color:var(--g400);letter-spacing:.5px;margin-bottom:5px;">本日の状況</div>
+    <div style="display:flex;gap:4px;flex-wrap:wrap;">${todayStatus}<span class="ck ${nippoToday?'ok':'ng'}">日報</span></div></div>
+    <div style="font-size:11px;font-weight:700;color:var(--g400);letter-spacing:.5px;margin-bottom:6px;">直近の記録</div>
+    ${recent.length?recent.map(r=>{
+      const showT=hasT.includes(r.type);
+      const diff=showT&&r.actualTime&&r.actualTime!==r.time;
+      return `<div class="dk-row" style="flex-wrap:wrap;">
+        <span style="font-size:10px;color:var(--g400);min-width:48px;">${r.date}</span>
+        <span class="dk-type" style="${TYPE_COLORS[r.type]||''}">${r.type}</span>
+        ${showT?`<span style="font-size:11px;font-weight:600;color:var(--green);">実際 ${r.actualTime||r.time}</span>`:''}
+        ${diff?`<span style="font-size:10px;color:var(--g400);">報告 ${r.time}</span>`:''}
+        ${!showT?`<span style="font-size:10px;color:var(--g400);">${r.time}</span>`:''}
+        ${showT?geoTag(r):''}
+      </div>`;
+    }).join(''):'<div style="color:var(--g400);font-size:13px;">記録がありません</div>'}`;
+}
+function renderDmNippo(){
+  const logs=nippoLog.filter(r=>r.userId===detailUserId).sort((a,b)=>b.id-a.id);
+  document.getElementById('dmp-nippo').innerHTML=logs.length
+    ?logs.map(r=>`<div class="dn-item"><div class="dn-date">${r.date} ${r.time}</div><div class="dn-text">${escHtml(r.text)}</div></div>`).join('')
+    :'<div style="color:var(--g400);font-size:13px;">日報がありません</div>';
+}
+function renderDmShift(){
+  const uid=detailUserId;
+  const mine=shiftEntries.filter(e=>e.userId===uid).sort((a,b)=>b.id-a.id);
+  if(!mine.length){document.getElementById('dmp-shift').innerHTML='<div style="color:var(--g400);font-size:13px;">シフト申請がありません</div>';return;}
+  document.getElementById('dmp-shift').innerHTML=mine.map(se=>{
+    const work=se.entries.filter(e=>e.tmplId!=='off').length;
+    const rows=se.entries.slice(0,10).map(e=>{
+      const tmpl=templates.find(t=>t.id===e.tmplId);
+      return `<div style="display:flex;gap:8px;font-size:12px;padding:4px 0;border-bottom:1px solid var(--g100);">
+        <span style="color:var(--g400);min-width:58px;">${e.date.slice(5)}</span>
+        <span style="font-weight:600;color:${tmpl?.id==='off'?'var(--g400)':'var(--blue)'};">${tmpl?.name||'-'}${tmpl?.start?' '+tmpl.start+'-'+tmpl.end:''}</span>
+      </div>`;
+    }).join('');
+    return `<div style="margin-bottom:12px;"><div style="font-size:13px;font-weight:700;color:var(--blue);margin-bottom:4px;">${se.month}（出勤 ${work}日　提出：${se.submitted}）</div>${rows}${se.entries.length>10?`<div style="font-size:11px;color:var(--g400);">… 他${se.entries.length-10}日</div>`:''}</div>`;
+  }).join('');
+}
+
+// ============================================================
+// UTILS
+// ============================================================
+function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function showToast(msg,type=''){
+  const el=document.getElementById('toast');
+  el.textContent=msg;el.className='toast'+(type?' '+type:'');
+  el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2800);
+}
+</script>
+</body>
+</html>
