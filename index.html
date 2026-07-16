@@ -1983,6 +1983,7 @@ function renderClosingHist(){
 // GAS
 // ============================================================
 async function sendToGas(data){
+  await _urlBootstrap; // 正しいURLの取得を待ってから送信
   const url=localStorage.getItem(K.gasUrl); if(!url) return;
   try{
     // text/plain：no-corsでもブラウザにヘッダーを削られない確実な送信方式
@@ -2000,18 +2001,41 @@ async function sendToGas(data){
 // スプレッドシート＝共有データベース。
 // どの端末の操作も60秒以内に全端末へ反映される。
 // ============================================================
-// GAS URL標準搭載：どの端末でも設定不要で同期が動く
-const DEFAULT_GAS_URL='https://script.google.com/macros/s/AKfycbzz4JhaMN5zjtzdHC_pY3dJ5Mq3aDVoNl_PEiQ7XBlHp7O5gUaucONwgT0ocQ5ZbHxIXg/exec';
-// URLに ?gas=... が付いていたら最優先で保存（スタッフ端末へのURL配布用）
+// GAS URL自動配布システム
+// 優先順位: ①?gas=リンク > ②リポジトリのgas_url.txt（全端末へ自動配布） > ③端末保存値 > ④内蔵値
+const DEFAULT_GAS_URL='https://script.google.com/macros/s/AKfycbzz4JhaMN5zjtzdHC_pY3dJ5Mq3aDVoNl_PEiQ7XBlHp7O5gUaucONwgT0ocQ5ZbHxIXg/exec'; // ④最終手段（古い可能性あり）
+let _gasUrlSource='内蔵デフォルト';
+
+// ①リンクから（最優先・即時）
 try{
   const _p=new URLSearchParams(location.search);
   const _g=_p.get('gas');
   if(_g && _g.indexOf('https://script.google.com/')===0){
     localStorage.setItem('fot_gas_url', _g);
+    localStorage.setItem('fot_gas_url_manual','1'); // リンク指定は固定扱い
+    _gasUrlSource='共有リンク';
     console.log('GAS URLをリンクから設定しました');
   }
 }catch(e){}
+if(localStorage.getItem('fot_gas_url')) _gasUrlSource=localStorage.getItem('fot_gas_url_manual')?'共有リンク/手動設定':'端末保存値';
 if(!localStorage.getItem('fot_gas_url')) localStorage.setItem('fot_gas_url', DEFAULT_GAS_URL);
+
+// ②リポジトリの gas_url.txt から自動取得（起動時に1回。全端末が常に正しいURLに追従）
+const _urlBootstrap=(async()=>{
+  try{
+    const resp=await fetch('./gas_url.txt?t='+Date.now(),{cache:'no-store'});
+    if(!resp.ok) return; // ファイル未設置なら何もしない
+    const txt=(await resp.text()).trim().split(/\s+/)[0];
+    if(txt && txt.indexOf('https://script.google.com/')===0 && txt.indexOf('/exec')>0){
+      if(localStorage.getItem('fot_gas_url')!==txt){
+        localStorage.setItem('fot_gas_url', txt);
+        localStorage.removeItem('fot_gas_url_manual');
+        console.log('GAS URLを gas_url.txt から更新しました');
+      }
+      _gasUrlSource='gas_url.txt（自動配布）';
+    }
+  }catch(e){ /* オフライン等は無視 */ }
+})();
 
 // ── 同期状態の監視 ──
 let _lastSyncOk=null, _lastSyncError='';
@@ -2048,7 +2072,7 @@ async function runSyncDiag(){
 
   // 1. URL設定
   if(!url){ ng('GAS URLが未設定です'); return showDiagResult(lines); }
-  ok('GAS URL設定済み：…'+url.slice(-24));
+  ok('GAS URL設定済み：…'+url.slice(-24)+'（取得元：'+_gasUrlSource+'）');
 
   // 2. GET疎通（データ受信）
   let json=null;
@@ -2125,6 +2149,7 @@ try{
 }catch(e){}
 
 async function syncFromGas(silent){
+  await _urlBootstrap; // 正しいURLの取得を待ってから同期
   const url=localStorage.getItem(K.gasUrl);
   if(!url){ if(!silent) showToast('設定タブでGAS URLを設定してください','error'); return; }
   // 実行中の同期があれば「相乗り」して完了を待つ（スキップすると未同期のまま処理が進むため）
@@ -2154,7 +2179,12 @@ async function _doSyncOnce(silent){
     // ── 打刻マージ（ID重複排除・追加のみ） ──
     if(Array.isArray(json.punches)){
       const ids=new Set(punches.map(p=>String(p.id)));
-      json.punches.forEach(p=>{ if(!ids.has(String(p.id))){ punches.push(p); changes++; } });
+      // GAS経由で返る打刻はIDが再構成されるため、内容でも重複判定（送信元端末での二重登録を防ぐ）
+      const sigs=new Set(punches.map(p=>p.userId+'|'+p.date+'|'+p.type+'|'+(p.time||'')));
+      json.punches.forEach(p=>{
+        const sig=p.userId+'|'+p.date+'|'+p.type+'|'+(p.time||'');
+        if(!ids.has(String(p.id)) && !sigs.has(sig)){ punches.push(p); sigs.add(sig); changes++; }
+      });
     }
 
     // ── 申請マージ（リモート優先：承認状況を全端末に反映） ──
