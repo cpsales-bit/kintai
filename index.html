@@ -536,7 +536,7 @@ body { overscroll-behavior-y: contain; }
             <div style="font-size:11px;color:var(--muted);margin-top:1px;" id="gas-sync-status2">スプレッドシートを共有データベースとして、打刻・申請・承認状況を全端末で統一します（60秒ごとに自動同期）</div>
           </div>
           <button onclick="syncFromGas(false)" style="padding:9px 16px;background:var(--teal);color:var(--white);border:none;border-radius:var(--rs);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap;" id="gas-fetch-btn">🔄 今すぐ同期</button>
-          <button onclick="runSyncDiag()" style="width:100%;margin-top:8px;padding:10px;background:var(--blue-l);color:var(--blue);border:none;border-radius:var(--rs);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">🩺 同期診断を実行（つながらない時はまずこれ）</button>
+          <button onclick="runSyncDiag()" style="padding:9px 16px;background:var(--blue-l);color:var(--blue);border:none;border-radius:var(--rs);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;">🩺 同期診断</button>
         </div>
         <div id="gas-sync-status" style="display:none;font-size:12px;color:var(--muted);margin-bottom:8px;text-align:right;"></div>
         <div class="sum-grid" id="dash-summary"></div>
@@ -545,6 +545,7 @@ body { overscroll-behavior-y: contain; }
         <div class="tbl-card" style="margin-bottom:14px;">
           <div class="tbl-head">
             <h3>⚠️ 本日のシフト・打刻チェック</h3>
+            <button onclick="syncFromGas(true).then(()=>renderDashboard())" style="padding:7px 12px;background:var(--surface);color:var(--slate);border:1.5px solid var(--border);border-radius:var(--rs);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;margin-right:6px;">🔄 更新</button>
             <button onclick="remindAllUnpunched()" id="remind-all-btn" style="padding:7px 14px;background:var(--red);color:var(--white);border:none;border-radius:var(--rs);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;">📢 未打刻者全員にリマインド</button>
           </div>
           <div id="dash-shift-check"></div>
@@ -552,7 +553,13 @@ body { overscroll-behavior-y: contain; }
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
           <div class="tbl-card">
-            <div class="tbl-head"><h3>本日の出勤状況</h3><span id="dash-date" style="font-size:11px;color:var(--muted);"></span></div>
+            <div class="tbl-head" style="gap:8px;">
+              <h3 id="dash-today-title">本日の出勤状況</h3>
+              <div style="display:flex;gap:6px;">
+                <button id="dash-tab-today" onclick="setDashDay('today')" style="padding:5px 14px;background:var(--teal);color:var(--white);border:none;border-radius:20px;font-size:11.5px;font-weight:700;font-family:inherit;cursor:pointer;">今日</button>
+                <button id="dash-tab-tomorrow" onclick="setDashDay('tomorrow')" style="padding:5px 14px;background:var(--surface);color:var(--muted);border:none;border-radius:20px;font-size:11.5px;font-weight:700;font-family:inherit;cursor:pointer;">明日</button>
+              </div>
+            </div>
             <div id="dash-today"></div>
           </div>
           <div class="tbl-card">
@@ -1805,7 +1812,8 @@ function submitAdminShift(){
     });
     // 有給シフトなら自動消化
     if(shiftType==='有給'){
-      leaveRec.push({id:Date.now()+i+0.5,userId:uid,type:'used',days:1,date:ds,note:'管理者シフト登録による有給消化',auto:true});
+      const lr1={id:Date.now()+i+0.5,userId:uid,type:'used',days:1,date:ds,note:'管理者シフト登録による有給消化',auto:true};
+      leaveRec.push(lr1); pushLeaveToGas(lr1);
     }
   });
   save();
@@ -1824,9 +1832,11 @@ function renderAdminShiftList(){
   document.getElementById('as-registered-list').innerHTML=list.length
     ? list.map(a=>`<div style="display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--border);">
         <span style="font-size:12px;color:var(--muted);min-width:80px;">${a.date}</span>
-        <span class="chip ${['有給','全日休暇','公休'].includes(a.shiftType)?'amber':'teal'}">${a.shiftType}</span>
+        <span class="chip ${['有給','全日休暇','公休','欠勤'].includes(a.shiftType)?'amber':'teal'}">${a.shiftType}</span>
         ${a.startTime?`<span style="font-size:12px;font-weight:600;">${a.startTime}〜${a.endTime}</span>`:''}
         ${a.registeredBy==='admin'?'<span style="font-size:10px;color:var(--muted);">管理者登録</span>':'<span style="font-size:10px;color:var(--blue);">本人申請</span>'}
+        <div style="flex:1;"></div>
+        <button onclick="openShiftEditModal('${a.userId}','${a.date}')" style="padding:5px 10px;background:var(--blue-l);color:var(--blue);border:none;border-radius:6px;font-size:11px;font-weight:700;font-family:inherit;cursor:pointer;">✏️ 編集</button>
       </div>`).join('')
     : '<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px;">当月以降のシフトはありません</div>';
 }
@@ -2194,6 +2204,10 @@ async function _doSyncOnce(silent){
         const key=String(ra.id);
         const la=localMap.get(key);
         if(!la){ apps.push(ra); localMap.set(key,ra); changes++; }
+        else if((ra.updatedAt||0)>(la.updatedAt||0)){
+          // リモートの方が新しい＝管理者のシフト編集などを全項目反映
+          Object.assign(la, ra); changes++;
+        }
         else if(la.status!==ra.status){ la.status=ra.status; changes++; }
       });
     }
@@ -2256,8 +2270,12 @@ async function _doSyncOnce(silent){
     if(!silent) showToast(changes>0?`同期完了：${changes}件更新 ✓`:'同期完了：全端末最新です ✓','success');
   }catch(e){
     console.error('sync error',e);
-    _lastSyncOk=false; _lastSyncError=e.message; updateSyncBanner();
-    if(!silent) showToast('同期エラー: '+e.message,'error');
+    let msg=e.message;
+    if(msg&&msg.indexOf('Failed to fetch')>=0){
+      msg='通信できません。プレビュー画面ではなく本番URL（cpsales-bit.github.io/kintai）で開いているか、ネット接続を確認してください';
+    }
+    _lastSyncOk=false; _lastSyncError=msg; updateSyncBanner();
+    if(!silent) showToast('同期エラー: '+msg,'error');
   }finally{
     if(btn){ btn.textContent='🔄 今すぐ同期'; btn.disabled=false; }
     if(hdrBtn) hdrBtn.textContent='🔄';
@@ -2327,7 +2345,7 @@ async function fetchFromGas(){
 // ============================================================
 function initAdmin(){
   const now=new Date(); adminTcYear=now.getFullYear(); adminTcMonth=now.getMonth();
-  document.getElementById('dash-date').textContent=now.toLocaleDateString('ja-JP',{month:'long',day:'numeric'});
+  const _dd=document.getElementById('dash-date'); if(_dd) _dd.textContent=now.toLocaleDateString('ja-JP',{month:'long',day:'numeric'});
   document.getElementById('gas-url-input').value=localStorage.getItem(K.gasUrl)||'';
   const _n=new Date();
   analyticsYear=_n.getFullYear(); analyticsMonth=_n.getMonth();
@@ -2405,9 +2423,10 @@ function renderShiftCheck(today, todayP, staffList){
     const badge = state==='ok'      ? '<span class="chip green">✓ 出勤済み</span>'
                 : state==='missing' ? '<span class="chip red">⚠ 未打刻</span>'
                 :                     '<span class="chip" style="background:var(--g100);color:var(--muted);">シフト開始前</span>';
-    const remind = state==='missing'
+    const remind = (state==='missing'
       ? `<button onclick="event.stopPropagation();sendManualRemind('${u.id}','${u.name}')" style="padding:6px 12px;background:var(--amber);color:var(--white);border:none;border-radius:var(--rs);font-size:11.5px;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap;">📧 リマインド</button>`
-      : '';
+      : '')
+      + `<button onclick="event.stopPropagation();openShiftEditModal('${u.id}','${today}')" title="シフト編集・欠勤登録" style="padding:6px 10px;background:var(--blue-l);color:var(--blue);border:none;border-radius:6px;font-size:11px;font-weight:700;font-family:inherit;cursor:pointer;margin-left:6px;">✏️</button>`;
     return `<div class="staff-row-a" style="${state==='missing'?'background:var(--red-l);':''}">
       <div class="avatar ${u.type}">${u.name[0]}</div>
       <div style="flex:1;">
@@ -2454,19 +2473,8 @@ function renderDashboard(){
     <div class="sum-card amber"><div class="ico">⏳</div><div class="cnt">${pending}</div><div class="lbl">未承認申請</div></div>
     <div class="sum-card"><div class="ico">📋</div><div class="cnt">${closedCount}</div><div class="lbl">今月締め完了</div></div>`;
 
-  // 今日の出勤状況
-  document.getElementById('dash-today').innerHTML=staffList.map(u=>{
-    const up=todayP.filter(p=>p.userId===u.id);
-    const ci=pickPunch(up,'出勤');
-    const co=pickPunch(up,'退勤');
-    const st=ci?co?'退勤済':'出勤中':'未出勤';
-    const cls=ci?co?'green':'teal':'ng';
-    return `<div class="staff-row-a" onclick="openStaffDetail('${u.id}')">
-      <div class="avatar ${u.type}">${u.name[0]}</div>
-      <div style="flex:1;"><div class="sname">${u.name}</div><div class="sdept">${u.dept}</div></div>
-      <span class="chip ${cls}">${st}</span>
-    </div>`;
-  }).join('');
+  // 出勤状況ボード（当日シフト者のみ・詳細ステート・明日タブ）
+  renderDashDayBoard();
 
   // ── 本日のシフト・打刻チェック ──
   renderShiftCheck(today, todayP, staffList);
@@ -2485,6 +2493,83 @@ function renderDashboard(){
 }
 
 // ============================================================
+// 出勤状況ボード（今日／明日タブ・シフト保有者のみ・状態詳細）
+// ============================================================
+let _dashDay='today';
+function setDashDay(d){ _dashDay=d; renderDashDayBoard(); }
+
+// スタッフの現在の勤務状態を判定
+function staffCurrentState(uid, dayP){
+  const up=dayP.filter(p=>p.userId===uid);
+  const ci=pickPunch(up,'出勤'), co=pickPunch(up,'退勤');
+  const bs=up.filter(p=>p.type==='休憩開始').length, be=up.filter(p=>p.type==='休憩終了').length;
+  if(co) return {key:'done', label:'退勤済み', cls:'purple'};
+  if(ci && bs>be) return {key:'break', label:'☕ 休憩中', cls:'amber'};
+  if(ci) return {key:'working', label:'勤務中', cls:'teal'};
+  return {key:'none', label:'未出勤', cls:'ng'};
+}
+
+function renderDashDayBoard(){
+  const el=document.getElementById('dash-today');
+  if(!el) return;
+  const isToday=_dashDay==='today';
+  const d=new Date(); if(!isToday) d.setDate(d.getDate()+1);
+  const ds=`${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
+  // タブの見た目
+  const tT=document.getElementById('dash-tab-today'), tM=document.getElementById('dash-tab-tomorrow');
+  if(tT&&tM){
+    tT.style.background=isToday?'var(--teal)':'var(--surface)'; tT.style.color=isToday?'var(--white)':'var(--muted)';
+    tM.style.background=!isToday?'var(--teal)':'var(--surface)'; tM.style.color=!isToday?'var(--white)':'var(--muted)';
+  }
+  const title=document.getElementById('dash-today-title');
+  if(title) title.textContent=(isToday?'本日':'明日')+'の出勤予定（'+ds.slice(5)+'）';
+
+  // その日の有効シフト（スタッフごとに最新1件・superseded/rejected除外）
+  const dayShifts={};
+  apps.filter(a=>a.type==='schedule'&&a.status==='approved'&&a.date===ds)
+      .sort((a,b)=>(a.updatedAt||a.id)-(b.updatedAt||b.id))
+      .forEach(a=>{ dayShifts[a.userId]=a; });
+  const list=Object.values(dayShifts);
+  const dayP=punches.filter(p=>p.date===ds);
+  const offTypes=['有給','全日休暇','公休','欠勤'];
+
+  if(list.length===0){
+    el.innerHTML=`<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px;">${isToday?'本日':'明日'}の承認済みシフトはありません</div>`;
+    return;
+  }
+  // 勤務系を上に、休み系は下に
+  list.sort((a,b)=>(offTypes.includes(a.shiftType)?1:0)-(offTypes.includes(b.shiftType)?1:0));
+
+  el.innerHTML=list.map(sh=>{
+    const u=getAllStaff().find(x=>x.id===sh.userId);
+    if(!u) return '';
+    const isOff=offTypes.includes(sh.shiftType);
+    let statusChip, timeline='';
+    if(isOff){
+      statusChip=`<span class="chip ${sh.shiftType==='欠勤'?'red':'amber'}">${sh.shiftType}</span>`;
+    } else if(isToday){
+      const st=staffCurrentState(u.id, dayP);
+      statusChip=`<span class="chip ${st.cls}">${st.label}</span>`;
+      const up=dayP.filter(p=>p.userId===u.id);
+      const t=(ty)=>{ const p=pickPunch(up,ty); return p?(p.actualTime||p.time):'—'; };
+      timeline=`<div style="font-size:10.5px;color:var(--muted);margin-top:2px;">出 ${t('出勤')} ｜ 休 ${t('休憩開始')}〜${t('休憩終了')} ｜ 退 ${t('退勤')}</div>`;
+    } else {
+      statusChip=`<span class="chip teal">${sh.shiftType}</span>`;
+    }
+    return `<div class="staff-row-a">
+      <div class="avatar ${u.type}">${u.name[0]}</div>
+      <div style="flex:1;min-width:0;">
+        <div class="sname">${u.name}</div>
+        <div class="sdept">${sh.shiftType}${sh.startTime?' '+sh.startTime+'〜'+sh.endTime:''}</div>
+        ${timeline}
+      </div>
+      ${statusChip}
+      <button onclick="event.stopPropagation();openShiftEditModal('${u.id}','${ds}')" title="シフト編集・欠勤登録" style="padding:6px 10px;background:var(--blue-l);color:var(--blue);border:none;border-radius:6px;font-size:11px;font-weight:700;font-family:inherit;cursor:pointer;flex-shrink:0;">✏️</button>
+    </div>`;
+  }).join('');
+}
+
+// ============================================================
 // ATTENDANCE (ADMIN)
 // ============================================================
 function adminTcPrev(){ adminTcMonth--; if(adminTcMonth<0){adminTcMonth=11;adminTcYear--;} renderAdminAttendance(); }
@@ -2500,20 +2585,33 @@ function renderAdminAttendance(){
   document.getElementById('admin-tc-month').textContent=`${adminTcYear}年${adminTcMonth+1}月`;
   const fu=document.getElementById('att-filter-user').value;
   const ft=document.getElementById('att-filter-type').value;
-  let logs=[...punches].sort((a,b)=>b.id-a.id).filter(p=>p.date.startsWith(ms));
+  let logs=[...punches].filter(p=>p.date.startsWith(ms));
   if(fu) logs=logs.filter(p=>p.userId===fu);
   if(ft){ const ids=getAllStaff().filter(u=>u.type===ft).map(u=>u.id); logs=logs.filter(p=>ids.includes(p.userId)); }
-  logs=logs.slice(0,100);
-  const html=logs.length
-    ? `<table class="data"><thead><tr><th>日付</th><th>時刻</th><th>実際</th><th>氏名</th><th>種別</th><th>位置</th><th>備考</th></tr></thead><tbody>`+
-      logs.map(p=>`<tr>
-        <td>${p.date}</td>
-        <td style="color:var(--muted);font-size:12px;">${p.time}</td>
-        <td><strong>${p.actualTime||p.time}</strong></td>
-        <td><span style="font-weight:600;">${p.userName}</span><br><span style="font-size:10px;color:var(--muted);">${getAllStaff().find(u=>u.id===p.userId)?.type==='partner'?'外注':'社内'}</span></td>
-        <td><span class="chip ${p.type==='出勤'?'teal':p.type==='退勤'?'purple':p.type==='休憩開始'?'green':'amber'}">${PUNCH_ICONS[p.type]||''} ${p.type}</span></td>
-        <td>${p.geo?`<a class="geo-map-btn" href="https://www.google.com/maps?q=${p.geo.lat},${p.geo.lng}" target="_blank">📍 地図</a>`:'—'}</td>
-        <td style="font-size:11px;color:var(--muted);">${p.note?escHtml(p.note):'—'}</td>
+
+  // 同一人物・同一日は1行に集約（種別ごとに列表示）
+  const groups={};
+  logs.forEach(p=>{
+    const key=p.date+'|'+p.userId;
+    if(!groups[key]) groups[key]={date:p.date, userId:p.userId, userName:p.userName, list:[]};
+    groups[key].list.push(p);
+  });
+  const rows=Object.values(groups).sort((a,b)=>b.date.localeCompare(a.date)||a.userName.localeCompare(b.userName,'ja')).slice(0,80);
+
+  const cell=(list,type)=>{
+    const p=pickPunch(list,type);
+    if(!p) return '<td style="color:var(--g300);">—</td>';
+    const geo=p.geo?` <a class="geo-map-btn" href="https://www.google.com/maps?q=${p.geo.lat},${p.geo.lng}" target="_blank" style="font-size:10px;">📍</a>`:'';
+    const fix=p.flags&&p.flags.corrected?'<span style="font-size:9px;color:var(--blue);"> 修正</span>':'';
+    return `<td><strong>${p.actualTime||p.time}</strong>${fix}${geo}</td>`;
+  };
+  const html=rows.length
+    ? `<table class="data"><thead><tr><th>日付</th><th>氏名</th><th>🚶 出発</th><th>🏢 出勤</th><th>☕ 休憩開始</th><th>✅ 休憩終了</th><th>🌙 退勤</th><th>打刻数</th></tr></thead><tbody>`+
+      rows.map(g=>`<tr>
+        <td>${g.date.slice(5)}</td>
+        <td><span style="font-weight:600;">${g.userName}</span><br><span style="font-size:10px;color:var(--muted);">${getAllStaff().find(u=>u.id===g.userId)?.type==='partner'?'外注':'社内'}</span></td>
+        ${cell(g.list,'出発報告')}${cell(g.list,'出勤')}${cell(g.list,'休憩開始')}${cell(g.list,'休憩終了')}${cell(g.list,'退勤')}
+        <td style="font-size:11px;color:var(--muted);">${g.list.length}件</td>
       </tr>`).join('')+'</tbody></table>'
     : '<div style="text-align:center;padding:28px;color:var(--muted);">打刻記録がありません</div>';
   document.getElementById('admin-att-table').innerHTML=html;
@@ -2523,10 +2621,103 @@ function renderAdminAttendance(){
 // APPROVALS (ADMIN)
 // ============================================================
 function filterApprovals(f){ _appFilter=f; renderApprovals(); }
-function approveApp(id,status){
-  const a=apps.find(x=>String(x.id)===String(id));
+// ============================================================
+// ✏️ 管理者シフト編集（承認済みでも変更可能・全端末に自動連携）
+// ============================================================
+function openShiftEditModal(uid, dateStr){
+  const u=getAllStaff().find(x=>x.id===uid);
+  if(!u) return;
+  // その日の有効なシフト（承認済み優先→申請中）
+  const existing=apps.filter(a=>a.userId===uid&&a.type==='schedule'&&a.date===dateStr&&a.status!=='superseded'&&a.status!=='rejected')
+    .sort((a,b)=>(a.status==='approved'?0:1)-(b.status==='approved'?0:1))[0];
+  const e=existing||{};
+  document.getElementById('app-detail-title').textContent=`✏️ シフト編集：${u.name}（${dateStr}）`;
+  document.getElementById('app-detail-body').innerHTML=`
+    <div class="form-group"><label>シフト種別</label>
+      <select id="se-shift" onchange="toggleSeTime()" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--rs);font-size:14px;font-family:inherit;background:var(--surface);outline:none;">
+        ${['通常','早番','遅番','夜勤','有給','全日休暇','公休','欠勤'].map(s=>`<option ${e.shiftType===s?'selected':''}>${s}</option>`).join('')}
+      </select></div>
+    <div id="se-time-fields" style="display:${['有給','全日休暇','公休','欠勤'].includes(e.shiftType)?'none':''};">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div class="form-group"><label>出勤時刻</label><input type="time" id="se-start" value="${e.startTime||'10:00'}"></div>
+        <div class="form-group"><label>退勤時刻</label><input type="time" id="se-end" value="${e.endTime||'19:00'}"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div class="form-group"><label>休憩開始</label><input type="time" id="se-brk-s" value="${e.brkStart||'13:00'}"></div>
+        <div class="form-group"><label>休憩終了</label><input type="time" id="se-brk-e" value="${e.brkEnd||'14:00'}"></div>
+      </div>
+    </div>
+    <div style="font-size:11.5px;color:var(--muted);background:var(--surface);border-radius:var(--rs);padding:10px 12px;line-height:1.7;">
+      ${existing?`現在：<strong>${e.shiftType||''}</strong>（${e.status==='approved'?'承認済み':'申請中'}／${e.registeredBy==='admin'?'管理者登録':'本人申請'}）`:'この日のシフトは未登録です。保存すると新規登録されます。'}<br>
+      💡 体調不良などの当日欠勤は種別「欠勤」を選んで保存してください。変更は全端末とスプレッドシートに自動反映されます。
+    </div>`;
+  document.getElementById('app-detail-footer').innerHTML=`
+    <button class="btn-teal" style="flex:1;" onclick="saveShiftEdit('${uid}','${dateStr}',${existing?`'${existing.id}'`:'null'})">保存する（承認済みで確定）</button>
+    ${existing?`<button onclick="deleteShift('${existing.id}')" style="padding:12px 16px;background:var(--red-l);color:var(--red);border:none;border-radius:var(--rs);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;">🗑 削除</button>`:''}
+    <button class="btn-ghost" onclick="closeModal('app-detail-overlay')">キャンセル</button>`;
+  openModal('app-detail-overlay');
+}
+function toggleSeTime(){
+  const noTime=['有給','全日休暇','公休','欠勤'].includes(document.getElementById('se-shift').value);
+  document.getElementById('se-time-fields').style.display=noTime?'none':'';
+}
+
+function saveShiftEdit(uid, dateStr, existingId){
+  const u=getAllStaff().find(x=>x.id===uid);
+  const shiftType=document.getElementById('se-shift').value;
+  const noTime=['有給','全日休暇','公休','欠勤'].includes(shiftType);
+  let entry;
+  if(existingId){
+    entry=apps.find(a=>String(a.id)===String(existingId));
+    if(!entry) return;
+  } else {
+    entry={id:Date.now(), type:'schedule', date:dateStr, userId:uid, userName:u.name, createdAt:todayStr(), message:'管理者登録'};
+    apps.push(entry);
+  }
+  const wasYukyu = entry.shiftType==='有給';
+  Object.assign(entry,{
+    shiftType,
+    startTime:noTime?'':document.getElementById('se-start').value,
+    endTime:  noTime?'':document.getElementById('se-end').value,
+    brkStart: noTime?'':document.getElementById('se-brk-s').value,
+    brkEnd:   noTime?'':document.getElementById('se-brk-e').value,
+    status:'approved', registeredBy:'admin', updatedAt:Date.now(),
+  });
+  // 有給に変更したら自動消化（既存の消化がなければ）
+  if(shiftType==='有給' && !wasYukyu){
+    const already=leaveRec.some(l=>l.userId===uid&&l.type==='used'&&l.date===dateStr);
+    if(!already){
+      const lr={id:Date.now()+0.1,userId:uid,type:'used',days:1,date:dateStr,note:'管理者シフト編集による有給消化',auto:true};
+      leaveRec.push(lr); pushLeaveToGas(lr);
+    }
+  }
+  save();
+  sendToGas({type:'申請保存', apps:[entry]}); // 全端末＋シフトシートに反映
+  auditLog('shift_edit', currentUser.id, `${u.name} ${dateStr} → ${shiftType}`);
+  showToast(`${u.name}さんの${dateStr}のシフトを「${shiftType}」に更新しました ✓`,'success');
+  closeModal('app-detail-overlay');
+  renderDashboard();
+  if(typeof renderAdminShiftList==='function' && document.getElementById('as-staff')?.value) renderAdminShiftList();
+}
+
+function deleteShift(appId){
+  const a=apps.find(x=>String(x.id)===String(appId));
   if(!a) return;
+  if(!confirm(`${a.userName}さんの ${a.date} のシフトを削除しますか？`)) return;
+  a.status='superseded'; a.updatedAt=Date.now();
+  save();
+  sendToGas({type:'申請保存', apps:[a]});
+  auditLog('shift_delete', currentUser.id, `${a.userName} ${a.date}`);
+  showToast('シフトを削除しました','success');
+  closeModal('app-detail-overlay');
+  renderDashboard();
+  if(typeof renderAdminShiftList==='function' && document.getElementById('as-staff')?.value) renderAdminShiftList();
+}
+
+// 承認処理の核（UI更新なし・一括承認からも使う）
+function applyApprovalCore(a,status){
   a.status=status;
+  a.updatedAt=Date.now();
 
   // 有給シフトを承認したら自動で有給消化を記録
   if(status==='approved' && a.type==='schedule' && a.shiftType==='有給'){
@@ -2535,7 +2726,8 @@ function approveApp(id,status){
       const g=leaveRec.filter(l=>l.userId===a.userId&&l.type==='grant').reduce((s,l)=>s+l.days,0);
       const used=leaveRec.filter(l=>l.userId===a.userId&&l.type==='used').reduce((s,l)=>s+l.days,0);
       if(g-used>=1){
-        leaveRec.push({id:Date.now(),userId:a.userId,type:'used',days:1,date:a.date,note:'有給シフト承認による自動消化',auto:true});
+        const lr2={id:Date.now(),userId:a.userId,type:'used',days:1,date:a.date,note:'有給シフト承認による自動消化',auto:true};
+        leaveRec.push(lr2); pushLeaveToGas(lr2);
         showToast('有給1日を自動消化しました（残'+(g-used-1)+'日）','info');
       } else {
         showToast('⚠️ '+a.userName+'さんの有給残日数が不足しています','error');
@@ -2558,24 +2750,57 @@ function approveApp(id,status){
     }
   }
 
-  save();
   sendToGas({type:'申請ステータス更新', appId:String(a.id), status}); // 全端末＋シートに承認状況を反映
+}
+
+function approveApp(id,status){
+  const a=apps.find(x=>String(x.id)===String(id));
+  if(!a){ showToast('申請が見つかりません。同期後にお試しください','error'); return; }
+  applyApprovalCore(a,status);
+  save();
   showToast(status==='approved'?'承認しました ✓':'却下しました','success');
   closeModal('app-detail-overlay');
   renderApprovals(); renderDashboard();
 }
 
+// ✅ 一括承認：チェックした申請をまとめて処理
+function bulkApprove(status){
+  const cbs=[...document.querySelectorAll('.appr-cb:checked')];
+  if(cbs.length===0){ showToast('申請にチェックを入れてください','error'); return; }
+  if(!confirm(cbs.length+'件をまとめて'+(status==='approved'?'承認':'却下')+'します。よろしいですか？')) return;
+  let done=0;
+  cbs.forEach(cb=>{
+    const a=apps.find(x=>String(x.id)===String(cb.dataset.id));
+    if(a && a.status==='pending'){ applyApprovalCore(a,status); done++; }
+  });
+  save();
+  showToast(done+'件を'+(status==='approved'?'承認':'却下')+'しました ✓','success');
+  renderApprovals(); renderDashboard();
+}
+function toggleAllApprCb(chk){ document.querySelectorAll('.appr-cb').forEach(cb=>{ cb.checked=chk; }); }
+
 function renderApprovals(){
-  let list=[...apps].sort((a,b)=>b.id-a.id);
+  let list=[...apps].filter(a=>a.status!=='superseded').sort((a,b)=>b.id-a.id);
   if(_appFilter==='pending') list=list.filter(a=>a.status==='pending');
   else if(_appFilter!=='all') list=list.filter(a=>a.type===_appFilter);
   const typeLabel={schedule:'📅 スケジュール',punch:'⏱ 打刻修正',expense:'🚃 交通費'};
+  const pendingCount=list.filter(a=>a.status==='pending').length;
+  const bulkBar = pendingCount>0 ? `
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--teal-l);border-radius:var(--rs);margin-bottom:10px;flex-wrap:wrap;">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:var(--teal-d);cursor:pointer;">
+        <input type="checkbox" onchange="toggleAllApprCb(this.checked)" style="width:16px;height:16px;accent-color:var(--teal);">全て選択
+      </label>
+      <div style="flex:1;"></div>
+      <button onclick="bulkApprove('approved')" style="padding:8px 16px;background:var(--teal);color:var(--white);border:none;border-radius:var(--rs);font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer;">✅ 選択をまとめて承認</button>
+      <button onclick="bulkApprove('rejected')" style="padding:8px 16px;background:var(--red);color:var(--white);border:none;border-radius:var(--rs);font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer;">✕ 選択をまとめて却下</button>
+    </div>` : '';
   document.getElementById('approvals-list').innerHTML=list.length
-    ? list.map(a=>`<div class="app-item" onclick="openAppDetail('${a.id}')">
-        <div class="app-item-icon" style="background:${a.type==='expense'?'var(--green-l)':a.type==='punch'?'var(--purple-l)':'var(--blue-l)'};">
+    ? bulkBar + list.map(a=>`<div class="app-item">
+        ${a.status==='pending'?`<input type="checkbox" class="appr-cb" data-id="${a.id}" onclick="event.stopPropagation()" style="width:18px;height:18px;accent-color:var(--teal);margin-right:4px;flex-shrink:0;">`:''}
+        <div class="app-item-icon" onclick="openAppDetail('${a.id}')" style="background:${a.type==='expense'?'var(--green-l)':a.type==='punch'?'var(--purple-l)':'var(--blue-l)'};cursor:pointer;">
           ${a.type==='expense'?'🚃':a.type==='punch'?'⏱':'📅'}
         </div>
-        <div class="app-item-body">
+        <div class="app-item-body" onclick="openAppDetail('${a.id}')" style="cursor:pointer;">
           <div class="app-item-title">${a.userName} — ${typeLabel[a.type]||a.type}申請</div>
           <div class="app-item-sub">${a.passLabel||a.date}${a.shiftType?' • '+a.shiftType:''}${a.amount?' • ¥'+Number(a.amount||0).toLocaleString():''}</div>
         </div>
@@ -2824,46 +3049,169 @@ async function addStaff(type){
   sendToGas({type:'スタッフ登録', staffId:id, staffName:name, email, staffType:type});
 }
 
+let _sdUid=null, _sdTab='profile', _sdYear, _sdMonth;
+
 function openStaffDetail(uid){
-  const u=getAllStaff().find(u=>u.id===uid);
+  _sdUid=uid; _sdTab='profile';
+  const n=new Date(); _sdYear=n.getFullYear(); _sdMonth=n.getMonth();
+  renderStaffDetail();
+  openModal('detail-overlay');
+}
+
+function sdTab(t){ _sdTab=t; renderStaffDetail(); }
+function sdPrev(){ _sdMonth--; if(_sdMonth<0){_sdMonth=11;_sdYear--;} renderStaffDetail(); }
+function sdNext(){ _sdMonth++; if(_sdMonth>11){_sdMonth=0;_sdYear++;} renderStaffDetail(); }
+
+function renderStaffDetail(){
+  const uid=_sdUid;
+  const u=getAllStaff().find(x=>x.id===uid);
   if(!u) return;
+  const ex=staffExtra.find(x=>x.id===uid)||{};
+  const rm=getStaffRemind(uid);
   document.getElementById('detail-title').textContent=u.name;
-  const ms=new Date().toISOString().slice(0,7).replace('-','/').replace('-','/');
-  const myP=punches.filter(p=>p.userId===uid);
-  const thisMonth=myP.filter(p=>p.date.startsWith(ms));
-  const workDays=[...new Set(thisMonth.filter(p=>p.type==='出勤').map(p=>p.date))].length;
-  const myClosings=closings.filter(c=>c.userId===uid);
-  const myApps=apps.filter(a=>a.userId===uid).slice(0,5);
-  document.getElementById('detail-body').innerHTML=`
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+
+  const tabBtn=(id,label)=>`<button onclick="sdTab('${id}')" style="padding:8px 16px;border:none;border-radius:20px;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer;background:${_sdTab===id?'var(--teal)':'var(--surface)'};color:${_sdTab===id?'var(--white)':'var(--muted)'};">${label}</button>`;
+  let body=`
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
       <div class="avatar ${u.type}" style="width:48px;height:48px;font-size:18px;">${u.name[0]}</div>
       <div><div style="font-size:17px;font-weight:700;">${u.name}</div>
-      <div style="font-size:12px;color:var(--muted);">${u.dept}${u.company?' / '+u.company:''}</div>
-      <span class="stag ${u.type}" style="margin-top:4px;display:inline-block;">${u.type==='internal'?'社員・業務委託':'外注パートナー'}</span></div>
+      <div style="font-size:12px;color:var(--muted);">${u.id} ／ ${u.dept||''}${u.company?' / '+u.company:''}</div></div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px;">
-      <div class="tc-sum-card"><div class="val">${workDays}</div><div class="lbl">今月出勤日数</div></div>
-      <div class="tc-sum-card"><div class="val">${myApps.filter(a=>a.status==='pending').length}</div><div class="lbl">未承認申請</div></div>
-      <div class="tc-sum-card"><div class="val">${myClosings.length}</div><div class="lbl">締め完了月数</div></div>
-    </div>
-    <div style="font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.5px;margin-bottom:8px;">直近の打刻</div>
-    ${myP.sort((a,b)=>b.id-a.id).slice(0,6).map(p=>`
+    <div style="display:flex;gap:6px;margin-bottom:14px;">${tabBtn('profile','📇 基本情報')}${tabBtn('shift','📅 シフト表')}${tabBtn('punch','⏱ 打刻')}</div>`;
+
+  if(_sdTab==='profile'){
+    const f=(label,id,val,type,ph)=>`
+      <div class="form-group" style="margin-bottom:10px;"><label>${label}</label>
+        <input type="${type||'text'}" id="sd-${id}" value="${escHtml(String(val??''))}" placeholder="${ph||''}"
+          style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:var(--rs);font-size:13.5px;font-family:inherit;background:var(--surface);outline:none;"></div>`;
+    body+=`
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px;">
+        ${f('氏名','name',ex.name||u.name)}
+        ${f('読み仮名','kana',ex.kana||'', 'text','やまだ たろう')}
+        ${f('部署・役割','dept',ex.dept||u.dept||'')}
+        ${f('入社・契約開始日','joinDate',(ex.joinDate||u.joinDate||'').replace(/\//g,'-'),'date')}
+        ${f('退社・契約終了日','leaveDate',(ex.leaveDate||'').replace(/\//g,'-'),'date')}
+        ${f('生年月日','birthDate',(ex.birthDate||'').replace(/\//g,'-'),'date')}
+        ${f('電話番号','phone',ex.phone||'','tel','090-xxxx-xxxx')}
+        ${f('緊急連絡先','emergency',ex.emergency||'','tel','続柄・番号')}
+      </div>
+      ${f('住所','address',ex.address||'')}
+      ${f('メールアドレス','email',getStaffEmail(u),'email')}
+      <div style="font-size:11.5px;font-weight:700;color:var(--muted);letter-spacing:.5px;margin:12px 0 8px;">⏰ リマインド時刻（空欄なら送信なし）</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 8px;">
+        ${f('出発','remindDepart',rm.remindDepart||'','time')}
+        ${f('出勤','remindClockIn',rm.remindClockIn||'','time')}
+        ${f('退勤','remindClockOut',rm.remindClockOut||'','time')}
+      </div>
+      <div style="font-size:11.5px;font-weight:700;color:var(--muted);letter-spacing:.5px;margin:12px 0 8px;">🔑 パスワード変更（空欄なら変更しません）</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px;">
+        ${f('新パスワード','pw1','','text','8文字以上・英数字')}
+        ${f('新パスワード（確認）','pw2','','text','もう一度入力')}
+      </div>
+      <button class="btn-teal" style="margin-top:8px;" onclick="saveStaffProfile('${uid}')">保存する（全端末に反映）</button>`;
+  }
+
+  if(_sdTab==='shift'){
+    const y=_sdYear, m=_sdMonth;
+    const ms=`${y}/${String(m+1).padStart(2,'0')}`;
+    const days=new Date(y,m+1,0).getDate();
+    const WD=['日','月','火','水','木','金','土'];
+    const myShifts={};
+    apps.filter(a=>a.userId===uid&&a.type==='schedule'&&a.status==='approved'&&a.date.startsWith(ms))
+        .sort((a,b)=>(a.updatedAt||a.id)-(b.updatedAt||b.id)).forEach(a=>{ myShifts[a.date]=a; });
+    const myP=punches.filter(p=>p.userId===uid&&p.date.startsWith(ms));
+    let totalMin=0, workDays=0;
+    let rows='';
+    for(let d=1;d<=days;d++){
+      const ds=`${ms}/${String(d).padStart(2,'0')}`;
+      const dow=new Date(y,m,d).getDay();
+      const sh=myShifts[ds];
+      const dp=myP.filter(p=>p.date===ds);
+      const ci=pickPunch(dp,'出勤'), co=pickPunch(dp,'退勤');
+      const mins=ci&&co?calcWorkMins(dp):0;
+      if(mins>0){ totalMin+=mins; workDays++; }
+      const offTypes=['有給','全日休暇','公休','欠勤'];
+      rows+=`<tr style="${dow===0?'background:#FFF5F5;':dow===6?'background:#F0F7FF;':''}">
+        <td style="font-size:11.5px;">${d}日(<span style="color:${dow===0?'var(--red)':dow===6?'var(--blue)':'var(--muted)'};">${WD[dow]}</span>)</td>
+        <td>${sh?`<span class="chip ${offTypes.includes(sh.shiftType)?(sh.shiftType==='欠勤'?'red':'amber'):'teal'}" style="font-size:10px;">${sh.shiftType}</span>`:'<span style="color:var(--g300);">—</span>'}</td>
+        <td style="font-size:11px;color:var(--muted);">${sh&&sh.startTime?sh.startTime+'〜'+sh.endTime:'—'}</td>
+        <td style="font-size:12px;">${ci?(ci.actualTime||ci.time):'—'}</td>
+        <td style="font-size:12px;">${co?(co.actualTime||co.time):'—'}</td>
+        <td style="font-size:12px;font-weight:700;color:var(--teal-d);">${mins>0?Math.floor(mins/60)+':'+String(mins%60).padStart(2,'0'):'—'}</td>
+        <td><button onclick="openShiftEditModal('${uid}','${ds}')" style="padding:3px 8px;background:var(--blue-l);color:var(--blue);border:none;border-radius:5px;font-size:10px;font-weight:700;font-family:inherit;cursor:pointer;">✏️</button></td>
+      </tr>`;
+    }
+    body+=`
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <button class="tc-nav" type="button" onclick="sdPrev()">‹</button>
+        <div style="font-size:14px;font-weight:700;">${y}年${m+1}月</div>
+        <button class="tc-nav" type="button" onclick="sdNext()">›</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+        <div class="tc-sum-card"><div class="val">${workDays}日</div><div class="lbl">出勤日数</div></div>
+        <div class="tc-sum-card"><div class="val">${Math.floor(totalMin/60)}h${totalMin%60}m</div><div class="lbl">実働時間</div></div>
+      </div>
+      <div style="max-height:46vh;overflow-y:auto;">
+      <table class="data" style="font-size:12px;"><thead><tr><th>日付</th><th>シフト</th><th>予定</th><th>出勤</th><th>退勤</th><th>実働</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+
+  if(_sdTab==='punch'){
+    const myP=punches.filter(p=>p.userId===uid);
+    body+=myP.sort((a,b)=>String(b.date+b.time).localeCompare(String(a.date+a.time))).slice(0,15).map(p=>`
       <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);">
         <span>${PUNCH_ICONS[p.type]||'⏱'}</span>
         <span style="font-size:12px;font-weight:600;">${p.type}</span>
         <span style="font-size:13px;font-weight:700;color:var(--teal-d);">${p.actualTime||p.time}</span>
         <span style="font-size:11px;color:var(--muted);">${p.date}</span>
+        ${p.flags&&p.flags.corrected?'<span class="chip blue" style="font-size:9px;">修正反映</span>':''}
         ${p.geo?`<a class="geo-map-btn" href="https://www.google.com/maps?q=${p.geo.lat},${p.geo.lng}" target="_blank">📍</a>`:''}
-      </div>`).join('')||'<div style="color:var(--muted);font-size:13px;">記録がありません</div>'}
-    <div style="margin-top:18px;padding-top:14px;border-top:1.5px solid var(--border);">
-      <div style="font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.5px;margin-bottom:8px;">🔑 パスワード管理</div>
-      <div style="display:flex;gap:8px;">
-        <input type="text" id="pw-new-input" placeholder="新しいパスワード" style="flex:1;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--rs);font-size:14px;font-family:inherit;background:var(--surface);outline:none;">
-        <button onclick="changeStaffPw('${u.id}')" style="padding:10px 16px;background:var(--navy);color:var(--white);border:none;border-radius:var(--rs);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap;">変更する</button>
-      </div>
-      <div style="font-size:11px;color:var(--muted);margin-top:6px;">変更後は次回ログインから新しいパスワードが有効になります</div>
-    </div>`;
-  openModal('detail-overlay');
+      </div>`).join('')||'<div style="color:var(--muted);font-size:13px;">記録がありません</div>';
+  }
+
+  document.getElementById('detail-body').innerHTML=body;
+}
+
+// 基本情報の保存（プロフィール＋メール・リマインド＋パスワード）
+async function saveStaffProfile(uid){
+  const g=id=>document.getElementById('sd-'+id)?.value?.trim()||'';
+  const pw1=g('pw1'), pw2=g('pw2');
+  if(pw1||pw2){
+    if(pw1!==pw2){ showToast('パスワードが一致しません','error'); return; }
+    if(pw1.length<8||!/[a-zA-Z]/.test(pw1)||!/[0-9]/.test(pw1)){ showToast('パスワードは8文字以上・英数字混在にしてください','error'); return; }
+  }
+  const base=getAllStaff().find(x=>x.id===uid)||STAFF_DB.find(x=>x.id===uid);
+  if(!base){ showToast('スタッフが見つかりません','error'); return; }
+  // staffExtraにプロフィールを保存（STAFF_DB固定スタッフは複製して上書き）
+  let ex=staffExtra.find(x=>x.id===uid);
+  if(!ex){ ex={...base, id:uid, role:base.role||'staff'}; delete ex.pw; staffExtra.push(ex); }
+  const d2s=v=>v?v.replace(/-/g,'/'):'';
+  Object.assign(ex,{
+    name:g('name')||base.name, kana:g('kana'), dept:g('dept'),
+    joinDate:d2s(g('joinDate')), leaveDate:d2s(g('leaveDate')), birthDate:d2s(g('birthDate')),
+    phone:g('phone'), emergency:g('emergency'), address:g('address'),
+    updatedAt:Date.now(),
+  });
+  // メール・リマインド（emailOverridesに保存 → GASスタッフ設定にも同期）
+  if(!emailOverrides[uid]) emailOverrides[uid]={};
+  emailOverrides[uid].email=g('email');
+  emailOverrides[uid].remindDepart=g('remindDepart');
+  emailOverrides[uid].remindClockIn=g('remindClockIn');
+  emailOverrides[uid].remindClockOut=g('remindClockOut');
+  localStorage.setItem('fot_emails', JSON.stringify(emailOverrides));
+  syncEmailsToGas();
+  // パスワード変更（全端末に反映）
+  if(pw1){
+    const newHash=await sha256(`${uid}:${pw1}:${SALT}`);
+    ex.pwHash=newHash; delete ex.pw;
+    pwOverrides[uid]=newHash;
+    sendToGas({type:'PW同期', userId:uid, hash:newHash});
+    auditLog('pw_change', currentUser.id, `${ex.name}(${uid})のパスワード変更`);
+  }
+  save();
+  auditLog('staff_edit', currentUser.id, `${ex.name}(${uid})の情報更新`);
+  showToast(`${ex.name}さんの情報を保存しました ✓${pw1?'（パスワードも変更）':''}`,'success');
+  renderStaffTables();
+  renderStaffDetail();
 }
 
 async function changeStaffPw(uid){
@@ -2897,6 +3245,15 @@ function saveGasUrl(){ localStorage.setItem(K.gasUrl,document.getElementById('ga
 // EMAIL MANAGEMENT
 // ============================================================
 // fot_emails: { uid: { email, remindDepart, remindClockIn, remindClockOut } }
+// 有給の増減をスプレッドシート「有給」シートに記録
+function pushLeaveToGas(rec){
+  const u=getAllStaff().find(x=>x.id===rec.userId)||STAFF_DB.find(x=>x.id===rec.userId);
+  const g=leaveRec.filter(l=>l.userId===rec.userId&&l.type==='grant').reduce((s,l)=>s+l.days,0);
+  const used=leaveRec.filter(l=>l.userId===rec.userId&&l.type==='used').reduce((s,l)=>s+l.days,0);
+  sendToGas({type:'有給記録', userId:rec.userId, userName:u?u.name:rec.userId,
+    kind:rec.type, days:rec.days, date:rec.date, note:rec.note||'', balance:g-used});
+}
+
 let emailOverrides = JSON.parse(localStorage.getItem('fot_emails')||'{}');
 
 function getStaffEmail(u){ return (emailOverrides[u.id]?.email) ?? u.email ?? ''; }
@@ -2963,6 +3320,11 @@ function saveEmails(){
   showToast('リマインド設定を保存しました ✓ GASに同期中...','success');
   auditLog('email_save', currentUser.id, 'リマインド設定更新');
   // GASにも全設定を同期
+  syncEmailsToGas();
+}
+
+// 全スタッフのメール・リマインド設定をGASスタッフ設定シートに同期
+function syncEmailsToGas(){
   const emailData = getAllStaff().map(u=>{
     const r=getStaffRemind(u.id);
     return {
@@ -3683,8 +4045,9 @@ function autoGrantLeave(){
       // 同日・同日数の自動付与が既にあればスキップ（二重付与防止）
       const exists=leaveRec.some(l=>l.userId===u.id&&l.type==='grant'&&l.date===g.date&&l.autoGrant);
       if(!exists){
-        leaveRec.push({id:Date.now()+Math.random(),userId:u.id,type:'grant',days:g.days,date:g.date,
-          note:`法定自動付与（第${g.nth}回）`,autoGrant:true});
+        const lr3={id:Date.now()+Math.random(),userId:u.id,type:'grant',days:g.days,date:g.date,
+          note:`法定自動付与（第${g.nth}回）`,autoGrant:true};
+        leaveRec.push(lr3); pushLeaveToGas(lr3);
         added++;
         details.push(`${u.name}: ${g.date} +${g.days}日`);
       }
@@ -3799,7 +4162,8 @@ function saveLeave(type){
     const u2=leaveRec.filter(l=>l.userId===uid&&l.type==='used').reduce((s,l)=>s+l.days,0);
     if(days>g-u2){ showToast(`有給残日数が不足しています（残${g-u2}日）`,'error'); return; }
   }
-  leaveRec.push({id:Date.now(),userId:uid,type,days,date,note});
+  const lr4={id:Date.now(),userId:uid,type,days,date,note};
+  leaveRec.push(lr4); pushLeaveToGas(lr4);
   save(); renderLeavePanel();
   auditLog('leave_'+type, currentUser.id, `${u?.name}(${uid}) 有給${type==='grant'?'付与':'消化'} ${days}日`);
   closeModal('app-detail-overlay');
