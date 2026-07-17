@@ -1,7 +1,7 @@
 // ============================================================
 // Fuse ON Time - Service Worker（オフライン対応）
 // ============================================================
-const CACHE_NAME = 'fuse-on-time-v1';
+const CACHE_NAME = 'fuse-on-time-v5';
 const ASSETS = [
   './',
   './index.html',

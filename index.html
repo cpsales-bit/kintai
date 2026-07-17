@@ -346,6 +346,7 @@ body { overscroll-behavior-y: contain; }
         </select>
       </div>
       <button class="btn-login" onclick="doLogin()">ログイン</button>
+      <div style="text-align:center;margin-top:14px;font-size:10.5px;color:var(--muted);" id="app-ver-label"></div>
       <div class="login-err" id="login-err">IDまたはパスワードが違います</div>
 
     </div>
@@ -545,7 +546,7 @@ body { overscroll-behavior-y: contain; }
         <div class="tbl-card" style="margin-bottom:14px;">
           <div class="tbl-head">
             <h3>⚠️ 本日のシフト・打刻チェック</h3>
-            <button onclick="syncFromGas(true).then(()=>renderDashboard())" style="padding:7px 12px;background:var(--surface);color:var(--slate);border:1.5px solid var(--border);border-radius:var(--rs);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;margin-right:6px;">🔄 更新</button>
+            <button onclick="refreshDashboard(this)" style="padding:7px 12px;background:var(--surface);color:var(--slate);border:1.5px solid var(--border);border-radius:var(--rs);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;margin-right:6px;">🔄 更新</button>
             <button onclick="remindAllUnpunched()" id="remind-all-btn" style="padding:7px 14px;background:var(--red);color:var(--white);border:none;border-radius:var(--rs);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;">📢 未打刻者全員にリマインド</button>
           </div>
           <div id="dash-shift-check"></div>
@@ -611,6 +612,8 @@ body { overscroll-behavior-y: contain; }
           <button class="chip" onclick="filterApprovals('punch')" id="afil-punch" style="cursor:pointer;padding:6px 14px;background:var(--purple-l);color:var(--purple);">打刻</button>
           <button class="chip" onclick="filterApprovals('expense')" id="afil-expense" style="cursor:pointer;padding:6px 14px;background:var(--green-l);color:var(--green);">交通費</button>
         </div>
+        <input type="text" id="appr-search" oninput="renderApprovals()" placeholder="🔍 名前・ID・日付で検索（例：小穴、FI001、08/03）"
+          style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:var(--rs);font-size:13.5px;font-family:inherit;background:var(--white);outline:none;margin-bottom:12px;">
         <div id="approvals-list"></div>
       </div>
 
@@ -783,6 +786,13 @@ body { overscroll-behavior-y: contain; }
       <!-- Security -->
       <div class="apanel" id="apanel-security">
         <div class="page-title">セキュリティ</div>
+
+        <!-- ID・パスワード管理 -->
+        <div class="card">
+          <h3>🔑 ID・パスワード管理</h3>
+          <p style="font-size:12px;color:var(--muted);margin-bottom:12px;">全スタッフのログインID・パスワードの確認と変更ができます。パスワードは復元できない暗号化で保存されるため、<strong>本人がアプリから変更した場合は表示できません</strong>（管理者が再設定すれば再び表示されます）。</p>
+          <div id="idpass-table"></div>
+        </div>
 
         <!-- 改ざん検証 -->
         <div class="card">
@@ -1106,11 +1116,11 @@ function save(){
 })();
 
 
-function getAllStaff(){
+function getAllStaff(includeAdmin){
   // deletedフラグが立ったスタッフは除外、staffExtraで上書きされたスタッフはそちらを優先
   const extraIds = new Set(staffExtra.map(u=>u.id));
-  const base = STAFF_DB.filter(u=>u.role==='staff' && !extraIds.has(u.id));
-  const extra = staffExtra.filter(u=>!u.deleted && u.role==='staff');
+  const base = STAFF_DB.filter(u=>(includeAdmin||u.role==='staff') && !extraIds.has(u.id));
+  const extra = staffExtra.filter(u=>!u.deleted && (includeAdmin||u.role==='staff'));
   return [...base, ...extra];
 }
 
@@ -1151,8 +1161,9 @@ async function doLogin(){
       errEl.style.display='block'; return;
     }
 
-    // ユーザー検索
-    const u = [...STAFF_DB,...staffExtra].find(x=>x.id===id && !x.deleted);
+    // ユーザー検索（削除・ID変更済みの旧IDは拒否）
+    const tombstoned = staffExtra.some(x=>x.id===id && x.deleted);
+    const u = tombstoned ? null : [...staffExtra,...STAFF_DB].find(x=>x.id===id && !x.deleted);
     let ok = false;
 
     if(u){
@@ -1163,9 +1174,9 @@ async function doLogin(){
         ok = (inputHash === storedHash);
       } catch(cryptoErr){
         console.warn('crypto.subtle unavailable, fallback:', cryptoErr);
-        // フォールバック: 旧pwフィールドとの直接比較
+        // フォールバック: 旧pwフィールドとの直接比較のみ（初期値の無条件許可は廃止）
         const storedRaw = u.pw || '';
-        ok = (pw === storedRaw) || (pw === 'admin123' && id === 'admin') || (pw === '1234' && id.startsWith('F'));
+        ok = !!storedRaw && (pw === storedRaw);
       }
     }
 
@@ -1929,11 +1940,25 @@ function openAppDetail(id){
   }
   html+='</div>';
   document.getElementById('app-detail-body').innerHTML=html;
-  // footer: スタッフは閲覧のみ、管理者は承認可能
+  // footer: スタッフは閲覧のみ、管理者は承認・却下＋決定後の変更も可能
   const footer=document.getElementById('app-detail-footer');
-  if(currentUser.role==='admin'&&a.status==='pending'){
-    footer.innerHTML=`<button class="btn-teal" style="flex:1;" onclick="approveApp('${id}','approved')">承認する</button>
-      <button style="flex:1;padding:12px;background:var(--red-l);color:var(--red);border:none;border-radius:var(--rs);font-weight:700;font-family:inherit;cursor:pointer;" onclick="approveApp('${id}','rejected')">却下する</button>`;
+  if(currentUser.role==='admin'){
+    if(a.status==='pending'){
+      footer.innerHTML=`<button class="btn-teal" style="flex:1;" onclick="approveApp('${id}','approved')">承認する</button>
+        <button style="flex:1;padding:12px;background:var(--red-l);color:var(--red);border:none;border-radius:var(--rs);font-weight:700;font-family:inherit;cursor:pointer;" onclick="approveApp('${id}','rejected')">却下する</button>`;
+    } else {
+      // 決定済み→間違えた場合に管理者がやり直せる
+      const cur=a.status==='approved'?'承認済み':'却下';
+      footer.innerHTML=`
+        <div style="width:100%;display:flex;flex-direction:column;gap:8px;">
+          <div style="font-size:11.5px;color:var(--muted);text-align:center;">現在「${cur}」です。間違えた場合は下のボタンで変更できます（変更は全端末・スプレッドシートに反映）</div>
+          <div style="display:flex;gap:8px;">
+            ${a.status!=='approved'?`<button class="btn-teal" style="flex:1;" onclick="approveApp('${id}','approved')">承認に変更</button>`:''}
+            ${a.status!=='rejected'?`<button style="flex:1;padding:12px;background:var(--red-l);color:var(--red);border:none;border-radius:var(--rs);font-weight:700;font-family:inherit;cursor:pointer;" onclick="approveApp('${id}','rejected')">却下に変更</button>`:''}
+            <button style="flex:1;padding:12px;background:var(--amber-l);color:var(--amber);border:none;border-radius:var(--rs);font-weight:700;font-family:inherit;cursor:pointer;" onclick="approveApp('${id}','pending')">未承認に戻す</button>
+          </div>
+        </div>`;
+    }
   } else {
     footer.innerHTML='';
   }
@@ -2011,6 +2036,7 @@ async function sendToGas(data){
 // スプレッドシート＝共有データベース。
 // どの端末の操作も60秒以内に全端末へ反映される。
 // ============================================================
+const APP_VERSION='v5.0（2026-07-17）';
 // GAS URL自動配布システム
 // 優先順位: ①?gas=リンク > ②リポジトリのgas_url.txt（全端末へ自動配布） > ③端末保存値 > ④内蔵値
 const DEFAULT_GAS_URL='https://script.google.com/macros/s/AKfycbzz4JhaMN5zjtzdHC_pY3dJ5Mq3aDVoNl_PEiQ7XBlHp7O5gUaucONwgT0ocQ5ZbHxIXg/exec'; // ④最終手段（古い可能性あり）
@@ -2029,6 +2055,7 @@ try{
 }catch(e){}
 if(localStorage.getItem('fot_gas_url')) _gasUrlSource=localStorage.getItem('fot_gas_url_manual')?'共有リンク/手動設定':'端末保存値';
 if(!localStorage.getItem('fot_gas_url')) localStorage.setItem('fot_gas_url', DEFAULT_GAS_URL);
+try{ const vl=document.getElementById('app-ver-label'); if(vl) vl.textContent='Fuse ON Time '+APP_VERSION; }catch(e){}
 
 // ②リポジトリの gas_url.txt から自動取得（起動時に1回。全端末が常に正しいURLに追従）
 const _urlBootstrap=(async()=>{
@@ -2127,11 +2154,19 @@ async function runSyncDiag(){
     }
   }catch(e){ ng('送信確認に失敗：'+e.message); }
 
-  // 5. データ取得テスト
+  // 5. データ取得テスト＋整合チェック
   try{
     const resp3=await fetch(url+'?action=getAll&t='+Date.now(),{method:'GET',mode:'cors'});
     const json3=await resp3.json();
     ok('データ取得：打刻'+(json3.punches?.length||0)+'件／申請'+(json3.apps?.length||0)+'件を確認');
+    // シート行数と取得件数と端末保存件数の突き合わせ
+    if(json.punchSheetRows!==undefined){
+      lines.push('　├ シートの打刻行数：'+json.punchSheetRows+'行');
+      lines.push('　├ 取得できた打刻：'+(json.punchParsed??json3.punches?.length??0)+'件'+(json.punchSkipped?'（読み飛ばし'+json.punchSkipped+'行）':''));
+      lines.push('　├ この端末の打刻：'+punches.length+'件');
+      lines.push('　└ シート最新打刻：'+(json.latestPunch||'—'));
+      if(json.parseError) ng('シート読み取りエラー：'+json.parseError);
+    }
     lines.push('');
     lines.push('🎉 同期システムは正常に動作しています！');
     lines.push('他の端末のアプリを一度閉じて開き直すと即同期されます');
@@ -2188,6 +2223,8 @@ async function _doSyncOnce(silent){
 
     // ── 打刻マージ（ID重複排除・追加のみ） ──
     if(Array.isArray(json.punches)){
+      const _remaps=JSON.parse(localStorage.getItem('fot_idremaps')||'{}');
+      json.punches.forEach(p=>{ if(_remaps[p.userId]) p.userId=_remaps[p.userId]; });
       const ids=new Set(punches.map(p=>String(p.id)));
       // GAS経由で返る打刻はIDが再構成されるため、内容でも重複判定（送信元端末での二重登録を防ぐ）
       const sigs=new Set(punches.map(p=>p.userId+'|'+p.date+'|'+p.type+'|'+(p.time||'')));
@@ -2235,6 +2272,11 @@ async function _doSyncOnce(silent){
           if(b.monthClose) monthClose=b.monthClose;
           if(b.geofences)  localStorage.setItem('fot_geofences', JSON.stringify(b.geofences));
           if(b.emails)     localStorage.setItem('fot_emails', JSON.stringify(b.emails));
+          if(b.pwNotes)    localStorage.setItem('fot_pwnotes', JSON.stringify(b.pwNotes));
+          if(b.idRemaps){
+            localStorage.setItem('fot_idremaps', JSON.stringify(b.idRemaps));
+            applyIdRemaps(b.idRemaps); // ID変更を過去データにも適用
+          }
           localStorage.setItem('fot_blob_ts', String(json.blobTs));
           changes++;
         }catch(e){ console.warn('blob parse error', e); }
@@ -2253,16 +2295,23 @@ async function _doSyncOnce(silent){
 
     if(changes>0){
       save();
-      // 表示中の画面を再描画
+      // 表示中の画面を再描画（同期内容を即座に反映）
       if(currentUser){
-        if(currentUser.role==='admin'){
-          if(typeof renderDashboard==='function') renderDashboard();
-          if(typeof renderApprovals==='function') renderApprovals();
-        } else {
-          if(typeof renderShiftCal==='function'&&document.getElementById('shift-cal-grid')) renderShiftCal();
-          if(typeof renderMyApps==='function') renderMyApps();
-          if(typeof renderStaffSummaryBar==='function') renderStaffSummaryBar();
-        }
+        try{
+          if(currentUser.role==='admin'){
+            renderDashboard();
+            renderApprovals();
+            if(typeof renderAdminAttendance==='function') renderAdminAttendance();
+            if(typeof renderAdminShiftList==='function'&&document.getElementById('as-staff')?.value) renderAdminShiftList();
+            if(typeof renderLeavePanel==='function') renderLeavePanel();
+          } else {
+            if(typeof renderShiftCal==='function'&&document.getElementById('shift-cal-grid')) renderShiftCal();
+            if(typeof renderMyApps==='function') renderMyApps();
+            if(typeof renderStaffSummaryBar==='function') renderStaffSummaryBar();
+            if(typeof renderTimecard==='function') renderTimecard();
+            if(typeof renderTodayPunches==='function') renderTodayPunches();
+          }
+        }catch(re){ console.error('rerender error', re); }
       }
     }
     const st=document.getElementById('gas-sync-status2');
@@ -2295,6 +2344,8 @@ function pushAdminBlob(){
       staffExtra, clients, leaveRec, ratesRec, alertCfg, monthClose,
       geofences: JSON.parse(localStorage.getItem('fot_geofences')||'[]'),
       emails:    JSON.parse(localStorage.getItem('fot_emails')||'[]'),
+      pwNotes:   JSON.parse(localStorage.getItem('fot_pwnotes')||'{}'),
+      idRemaps:  JSON.parse(localStorage.getItem('fot_idremaps')||'{}'),
     })});
   }, 2000);
 }
@@ -2366,7 +2417,7 @@ function switchAdminTab(name){
   if(name==='attendance') renderAdminAttendance();
   if(name==='approvals')  renderApprovals();
   if(name==='staff-internal'||name==='staff-partner') renderStaffTables();
-  if(name==='security'){ renderGeofences(); renderFlagged(); renderAuditLog(); }
+  if(name==='security'){ renderIdPassTable(); renderGeofences(); renderFlagged(); renderAuditLog(); }
   if(name==='analytics')    renderAnalytics();
   if(name==='shift-manage') initAdminShift();
   if(name==='dashboard'||name==='approvals') syncFromGas(true); // 開いた瞬間に最新化
@@ -2467,8 +2518,10 @@ function renderDashboard(){
   const thisMonth=today.slice(0,7);
   const closedCount=closings.filter(c=>c.month===thisMonth).length;
 
+  const nInternal=staffList.filter(u=>u.type==='internal').length;
+  const nPartner=staffList.filter(u=>u.type==='partner').length;
   document.getElementById('dash-summary').innerHTML=`
-    <div class="sum-card teal"><div class="ico">👥</div><div class="cnt">${staffList.length}</div><div class="lbl">総スタッフ数</div></div>
+    <div class="sum-card teal"><div class="ico">👥</div><div class="cnt">${staffList.length}</div><div class="lbl">総スタッフ数<br><span style="font-size:10px;font-weight:600;color:var(--muted);">社員・業務委託 ${nInternal}名 ／ 外注 ${nPartner}名</span></div></div>
     <div class="sum-card green"><div class="ico">🏢</div><div class="cnt">${shukkin}</div><div class="lbl">本日出勤済み</div></div>
     <div class="sum-card amber"><div class="ico">⏳</div><div class="cnt">${pending}</div><div class="lbl">未承認申請</div></div>
     <div class="sum-card"><div class="ico">📋</div><div class="cnt">${closedCount}</div><div class="lbl">今月締め完了</div></div>`;
@@ -2495,6 +2548,30 @@ function renderDashboard(){
 // ============================================================
 // 出勤状況ボード（今日／明日タブ・シフト保有者のみ・状態詳細）
 // ============================================================
+// ダッシュボードの手動更新（同期→再描画→完了表示）
+async function refreshDashboard(btn){
+  if(btn){ btn.textContent='⏳ 更新中...'; btn.disabled=true; }
+  try{
+    await syncFromGas(true);
+    renderDashboard();
+    showToast('最新の情報に更新しました ✓','success');
+  }finally{
+    if(btn){ btn.textContent='🔄 更新'; btn.disabled=false; }
+  }
+}
+
+// ダッシュボード手動更新（同期→再描画→結果を通知）
+async function refreshDashboard(btn){
+  if(btn){ btn.textContent='⏳ 更新中...'; btn.disabled=true; }
+  try{
+    await syncFromGas(true);
+    renderDashboard();
+    showToast(_lastSyncOk===false ? '同期エラー：'+_lastSyncError : '最新の状態に更新しました ✓', _lastSyncOk===false?'error':'success');
+  } finally {
+    if(btn){ btn.textContent='🔄 更新'; btn.disabled=false; }
+  }
+}
+
 let _dashDay='today';
 function setDashDay(d){ _dashDay=d; renderDashDayBoard(); }
 
@@ -2716,8 +2793,27 @@ function deleteShift(appId){
 
 // 承認処理の核（UI更新なし・一括承認からも使う）
 function applyApprovalCore(a,status){
+  const prev=a.status;
   a.status=status;
   a.updatedAt=Date.now();
+
+  // 「承認」から他の状態に変更する場合の後始末
+  if(prev==='approved' && status!=='approved'){
+    // 有給の自動消化を返還
+    if(a.type==='schedule' && a.shiftType==='有給'){
+      const idx=leaveRec.findIndex(l=>l.userId===a.userId&&l.type==='used'&&l.date===a.date&&l.auto);
+      if(idx>=0){
+        leaveRec.splice(idx,1);
+        pushLeaveToGas({userId:a.userId,type:'grant',days:0,date:a.date,note:'承認取消による有給返還（消化取消）'});
+        showToast('有給消化を取り消しました（残日数を返還）','info');
+      }
+    }
+    // 打刻修正で追加した打刻を削除
+    if(a.type==='punch'){
+      const idx=punches.findIndex(p=>String(p.id)==='fix_'+a.id);
+      if(idx>=0){ punches.splice(idx,1); showToast('タイムカードから修正打刻を取り消しました','info'); }
+    }
+  }
 
   // 有給シフトを承認したら自動で有給消化を記録
   if(status==='approved' && a.type==='schedule' && a.shiftType==='有給'){
@@ -2783,6 +2879,9 @@ function renderApprovals(){
   let list=[...apps].filter(a=>a.status!=='superseded').sort((a,b)=>b.id-a.id);
   if(_appFilter==='pending') list=list.filter(a=>a.status==='pending');
   else if(_appFilter!=='all') list=list.filter(a=>a.type===_appFilter);
+  // 検索（名前・ID・日付・種別）
+  const q=(document.getElementById('appr-search')?.value||'').trim().toLowerCase();
+  if(q) list=list.filter(a=>((a.userName||'')+(a.userId||'')+(a.date||'')+(a.passLabel||'')+(a.shiftType||'')).toLowerCase().includes(q));
   const typeLabel={schedule:'📅 スケジュール',punch:'⏱ 打刻修正',expense:'🚃 交通費'};
   const pendingCount=list.filter(a=>a.status==='pending').length;
   const bulkBar = pendingCount>0 ? `
@@ -3043,6 +3142,10 @@ async function addStaff(type){
   if(email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ showToast('メールアドレスの形式が正しくありません','error'); return; }
   const pwHash = await sha256(`${id}:${pw}:${SALT}`);
   staffExtra.push({id,pwHash,name,dept,type,role:'staff',joinDate:join,company,email});
+  // 管理者が確認できるようPWの控えを保存（ID/PASS管理画面に表示）
+  const _notes=JSON.parse(localStorage.getItem('fot_pwnotes')||'{}');
+  _notes[id]=pw; localStorage.setItem('fot_pwnotes', JSON.stringify(_notes));
+  sendToGas({type:'PW同期', userId:id, hash:pwHash});
   save(); renderStaffTables(); closeModal('app-detail-overlay');
   auditLog('staff_add', currentUser.id, `${name}(${id})を追加`);
   showToast(`${name}さんを追加しました ✓`,'success');
@@ -3245,6 +3348,152 @@ function saveGasUrl(){ localStorage.setItem(K.gasUrl,document.getElementById('ga
 // EMAIL MANAGEMENT
 // ============================================================
 // fot_emails: { uid: { email, remindDepart, remindClockIn, remindClockOut } }
+// ============================================================
+// 🔑 ID・パスワード管理（管理者用）
+// ============================================================
+function getPwDisplay(u){
+  const notes=JSON.parse(localStorage.getItem('fot_pwnotes')||'{}');
+  if(notes[u.id]) return {text:notes[u.id], known:true};
+  // 初期パスワードから未変更かを判定
+  const fixed=STAFF_DB.find(x=>x.id===u.id);
+  const curHash=pwOverrides[u.id] || staffExtra.find(x=>x.id===u.id)?.pwHash || fixed?.pwHash;
+  if(fixed && curHash===fixed.pwHash){
+    return {text:u.id==='admin'?'admin123':'1234', known:true, initial:true};
+  }
+  return {text:'本人が変更（表示不可）', known:false};
+}
+
+function renderIdPassTable(){
+  const el=document.getElementById('idpass-table');
+  if(!el) return;
+  el.innerHTML=`<table class="data"><thead><tr><th>氏名</th><th>ログインID</th><th>現在のパスワード</th><th>操作</th></tr></thead><tbody>`+
+    getAllStaff(true).map(u=>{
+      const pw=getPwDisplay(u);
+      return `<tr>
+        <td><span style="font-weight:600;">${u.name}</span><br><span style="font-size:10px;color:var(--muted);">${u.type==='partner'?'外注':u.role==='admin'?'管理者':'社内'}</span></td>
+        <td><strong>${u.id}</strong></td>
+        <td>${pw.known
+          ? `<span style="font-family:monospace;font-weight:700;color:var(--teal-d);">${escHtml(pw.text)}</span>${pw.initial?'<span style="font-size:10px;color:var(--amber);margin-left:6px;">（初期値）</span>':''}`
+          : `<span style="font-size:11.5px;color:var(--muted);">${pw.text}</span>`}</td>
+        <td style="white-space:nowrap;">
+          <button onclick="openChangeIdModal('${u.id}')" style="padding:5px 10px;background:var(--blue-l);color:var(--blue);border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;margin-right:4px;">✏️ ID変更</button>
+          <button onclick="openSetPwModal('${u.id}')" style="padding:5px 10px;background:var(--teal-l);color:var(--teal-d);border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">🔑 PW変更</button>
+        </td>
+      </tr>`;
+    }).join('')+'</tbody></table>';
+}
+
+function openSetPwModal(uid){
+  const u=getAllStaff(true).find(x=>x.id===uid);
+  document.getElementById('app-detail-title').textContent=`🔑 ${u.name}さんのパスワード変更`;
+  document.getElementById('app-detail-body').innerHTML=`
+    <div class="form-group"><label>新しいパスワード（8文字以上・英数字混在）</label>
+      <input type="text" id="ip-pw1" placeholder="例：fuse2026abc" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:var(--rs);font-size:14px;font-family:inherit;background:var(--surface);outline:none;"></div>
+    <div class="form-group"><label>新しいパスワード（確認）</label>
+      <input type="text" id="ip-pw2" placeholder="もう一度入力" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:var(--rs);font-size:14px;font-family:inherit;background:var(--surface);outline:none;"></div>
+    <div style="font-size:11.5px;color:var(--muted);">変更は全端末に即時反映され、次回ログインから新しいパスワードが有効になります。管理画面にも控えが表示されます。</div>`;
+  document.getElementById('app-detail-footer').innerHTML=`
+    <button class="btn-teal" style="flex:1;" onclick="adminSetPw('${uid}')">変更する</button>
+    <button class="btn-ghost" onclick="closeModal('app-detail-overlay')">キャンセル</button>`;
+  openModal('app-detail-overlay');
+}
+
+async function adminSetPw(uid){
+  const pw1=document.getElementById('ip-pw1').value.trim();
+  const pw2=document.getElementById('ip-pw2').value.trim();
+  if(pw1!==pw2){ showToast('パスワードが一致しません','error'); return; }
+  if(pw1.length<8||!/[a-zA-Z]/.test(pw1)||!/[0-9]/.test(pw1)){ showToast('8文字以上・英数字混在にしてください','error'); return; }
+  const u=getAllStaff(true).find(x=>x.id===uid);
+  const newHash=await sha256(`${uid}:${pw1}:${SALT}`);
+  const ex=staffExtra.find(x=>x.id===uid);
+  if(ex){ ex.pwHash=newHash; delete ex.pw; }
+  pwOverrides[uid]=newHash;
+  const notes=JSON.parse(localStorage.getItem('fot_pwnotes')||'{}');
+  notes[uid]=pw1; localStorage.setItem('fot_pwnotes', JSON.stringify(notes));
+  sendToGas({type:'PW同期', userId:uid, hash:newHash});
+  save();
+  auditLog('pw_change', currentUser.id, `${u.name}(${uid})のPW変更（管理画面）`);
+  showToast(`${u.name}さんのパスワードを変更しました ✓`,'success');
+  closeModal('app-detail-overlay');
+  renderIdPassTable();
+}
+
+function openChangeIdModal(uid){
+  const u=getAllStaff(true).find(x=>x.id===uid);
+  if(u.role==='admin'){ showToast('管理者IDは変更できません','error'); return; }
+  document.getElementById('app-detail-title').textContent=`✏️ ${u.name}さんのID変更`;
+  document.getElementById('app-detail-body').innerHTML=`
+    <div class="form-group"><label>現在のID</label>
+      <input type="text" value="${u.id}" disabled style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:var(--rs);font-size:14px;font-family:inherit;background:var(--g100);color:var(--muted);"></div>
+    <div class="form-group"><label>新しいID（英数字）</label>
+      <input type="text" id="ip-newid" placeholder="例：FI005" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:var(--rs);font-size:14px;font-family:inherit;background:var(--surface);outline:none;"></div>
+    <div style="font-size:11.5px;color:var(--muted);line-height:1.7;">・打刻・申請・有給などの過去データは新IDに引き継がれます<br>・パスワードは変わりません<br>・スプレッドシートの過去の記録は旧IDのまま履歴として残ります<br>・本人には新IDを必ず伝えてください（次回ログインから新ID）</div>`;
+  document.getElementById('app-detail-footer').innerHTML=`
+    <button class="btn-teal" style="flex:1;" onclick="changeStaffId('${uid}')">変更する</button>
+    <button class="btn-ghost" onclick="closeModal('app-detail-overlay')">キャンセル</button>`;
+  openModal('app-detail-overlay');
+}
+
+async function changeStaffId(oldId){
+  const newId=document.getElementById('ip-newid').value.trim();
+  if(!newId||!/^[a-zA-Z0-9_-]{3,16}$/.test(newId)){ showToast('IDは英数字3〜16文字で入力してください','error'); return; }
+  if(getAllStaff(true).some(u=>u.id===newId)){ showToast('このIDは既に使用されています','error'); return; }
+  const base=getAllStaff(true).find(x=>x.id===oldId);
+  if(!base) return;
+  // staffExtraに新IDで登録（固定スタッフは複製して旧IDをdeleted扱い）
+  let ex=staffExtra.find(x=>x.id===oldId);
+  const curHash=pwOverrides[oldId] || ex?.pwHash || STAFF_DB.find(x=>x.id===oldId)?.pwHash;
+  if(ex){ ex.id=newId; }
+  else { ex={...base, id:newId}; delete ex.pw; staffExtra.push(ex); }
+  if(STAFF_DB.some(x=>x.id===oldId)){
+    // 固定スタッフの旧IDを無効化
+    if(!staffExtra.some(x=>x.id===oldId&&x.deleted)) staffExtra.push({id:oldId, name:base.name, deleted:true, role:'staff', type:base.type});
+  }
+  // パスワードハッシュはIDを含むため再計算が必要 → 控えがあれば再ハッシュ、なければ初期値1234にリセット
+  const notes=JSON.parse(localStorage.getItem('fot_pwnotes')||'{}');
+  let pwPlain=notes[oldId];
+  const fixed=STAFF_DB.find(x=>x.id===oldId);
+  if(!pwPlain && fixed && curHash===fixed.pwHash) pwPlain='1234'; // 初期値のまま
+  let resetNote='';
+  if(!pwPlain){ pwPlain='1234'; resetNote='（パスワードは初期値1234にリセットされました）'; }
+  const newHash=await sha256(`${newId}:${pwPlain}:${SALT}`);
+  ex.pwHash=newHash;
+  pwOverrides[newId]=newHash; delete pwOverrides[oldId];
+  notes[newId]=pwPlain; delete notes[oldId];
+  localStorage.setItem('fot_pwnotes', JSON.stringify(notes));
+  // メール設定の引き継ぎ
+  if(emailOverrides[oldId]){ emailOverrides[newId]=emailOverrides[oldId]; delete emailOverrides[oldId]; localStorage.setItem('fot_emails', JSON.stringify(emailOverrides)); }
+  // 過去データの引き継ぎ（全端末に伝わるようリマップを記録）
+  const remaps=JSON.parse(localStorage.getItem('fot_idremaps')||'{}');
+  remaps[oldId]=newId;
+  localStorage.setItem('fot_idremaps', JSON.stringify(remaps));
+  applyIdRemaps({[oldId]:newId});
+  // 申請を再送して共有DBのIDも更新
+  const myApps=apps.filter(a=>a.userId===newId);
+  myApps.forEach(a=>{ a.updatedAt=Date.now(); });
+  if(myApps.length) sendToGas({type:'申請保存', apps:myApps});
+  sendToGas({type:'PW同期', userId:newId, hash:newHash});
+  syncEmailsToGas();
+  save();
+  auditLog('id_change', currentUser.id, `${base.name}: ${oldId} → ${newId}`);
+  showToast(`IDを ${newId} に変更しました ✓ ${resetNote}`,'success');
+  closeModal('app-detail-overlay');
+  renderIdPassTable(); renderStaffTables();
+}
+
+// ID変更を全データに適用（旧ID→新IDへの引き継ぎ）
+function applyIdRemaps(remaps){
+  if(!remaps) return;
+  let changed=false;
+  Object.entries(remaps).forEach(([oldId,newId])=>{
+    punches.forEach(p=>{ if(p.userId===oldId){ p.userId=newId; changed=true; } });
+    apps.forEach(a=>{ if(a.userId===oldId){ a.userId=newId; changed=true; } });
+    leaveRec.forEach(l=>{ if(l.userId===oldId){ l.userId=newId; changed=true; } });
+    closings.forEach(c=>{ if(c.userId===oldId){ c.userId=newId; changed=true; } });
+  });
+  if(changed) save();
+}
+
 // 有給の増減をスプレッドシート「有給」シートに記録
 function pushLeaveToGas(rec){
   const u=getAllStaff().find(x=>x.id===rec.userId)||STAFF_DB.find(x=>x.id===rec.userId);
@@ -4060,8 +4309,46 @@ function autoGrantLeave(){
   if(skipped>0) console.log(`入社日未設定のため${skipped}名スキップ`);
 }
 
+// 有給履歴の確認・修正モーダル（間違った記録を個別に削除できる）
+function openLeaveHistoryModal(uid){
+  const u=getAllStaff().find(x=>x.id===uid);
+  if(!u) return;
+  const recs=leaveRec.filter(l=>l.userId===uid).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  document.getElementById('app-detail-title').textContent=`📝 ${u.name}さんの有給履歴`;
+  document.getElementById('app-detail-body').innerHTML=recs.length
+    ? `<div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">間違った記録は🗑で削除できます。削除は残日数に即反映され、スプレッドシートにも記録されます。</div>`
+      + recs.map(l=>`
+      <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);">
+        <span class="chip ${l.type==='grant'?'green':'amber'}" style="font-size:10.5px;">${l.type==='grant'?'付与':'消化'}</span>
+        <span style="font-size:13px;font-weight:700;">${l.days}日</span>
+        <span style="font-size:12px;color:var(--muted);">${l.date||'—'}</span>
+        <span style="flex:1;font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(l.note||'')}</span>
+        <button onclick="deleteLeaveRec('${uid}','${l.id}')" style="padding:5px 9px;background:var(--red-l);color:var(--red);border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;">🗑</button>
+      </div>`).join('')
+    : '<div style="color:var(--muted);font-size:13px;text-align:center;padding:20px;">記録がありません</div>';
+  document.getElementById('app-detail-footer').innerHTML=
+    `<button class="btn-ghost" style="flex:1;" onclick="closeModal('app-detail-overlay')">閉じる</button>`;
+  openModal('app-detail-overlay');
+}
+
+function deleteLeaveRec(uid, recId){
+  const idx=leaveRec.findIndex(l=>String(l.id)===String(recId));
+  if(idx<0) return;
+  const l=leaveRec[idx];
+  if(!confirm(`この記録を削除しますか？\n${l.type==='grant'?'付与':'消化'} ${l.days}日（${l.date||'—'}）\n※残日数に即反映されます`)) return;
+  leaveRec.splice(idx,1);
+  // スプレッドシートに削除の記録を残す（監査用）
+  pushLeaveToGas({userId:uid, type:l.type==='grant'?'used':'grant', days:0, date:l.date,
+    note:`【管理者修正】${l.type==='grant'?'付与':'消化'}${l.days}日（${l.date||''}）の記録を削除`});
+  save();
+  auditLog('leave_edit', currentUser.id, `${uid}の有給記録削除: ${l.type} ${l.days}日`);
+  showToast('記録を削除し、残日数を更新しました ✓','success');
+  openLeaveHistoryModal(uid);
+  renderLeavePanel();
+}
+
 function renderLeavePanel(){
-  const staff=getAllStaff();
+  const staff=getAllStaff().filter(u=>u.type==='internal'); // 有給は社員・業務委託のみ（外注は対象外）
   document.getElementById('leave-list').innerHTML=staff.map(u=>{
     const grants=leaveRec.filter(l=>l.userId===u.id&&l.type==='grant');
     const used  =leaveRec.filter(l=>l.userId===u.id&&l.type==='used');
@@ -4085,6 +4372,7 @@ function renderLeavePanel(){
         <div style="display:flex;flex-direction:column;gap:4px;">
           <button onclick="openGrantLeaveModal('${u.id}')" style="padding:5px 10px;background:var(--teal-l);color:var(--teal-d);border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">付与</button>
           <button onclick="openUseLeaveModal('${u.id}')" style="padding:5px 10px;background:var(--amber-l);color:var(--amber);border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">消化</button>
+          <button onclick="openLeaveHistoryModal('${u.id}')" style="padding:5px 10px;background:var(--blue-l);color:var(--blue);border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">📝 記録修正</button>
         </div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px;">
@@ -4098,6 +4386,9 @@ function renderLeavePanel(){
           <div style="font-size:12px;font-weight:700;color:${legalOk?'var(--green)':'var(--red)'};">${legalOk?'✅ OK':'⚠️ 不足'}</div>
           <div style="font-size:10px;color:var(--muted);">年5日義務</div></div>
       </div>
+      <div style="text-align:right;margin-bottom:6px;">
+        <button onclick="openLeaveHistoryModal('${u.id}')" style="padding:5px 12px;background:var(--blue-l);color:var(--blue);border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">📝 履歴の確認・修正</button>
+      </div>
       ${grants.slice(-3).concat(used.slice(-3)).sort((a,b)=>(b.date||'').localeCompare(a.date||'')).slice(0,4).map(l=>`
         <div style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:11px;border-bottom:1px solid var(--border);">
           <span style="color:var(--muted);min-width:70px;">${l.date||''}</span>
@@ -4107,6 +4398,55 @@ function renderLeavePanel(){
         </div>`).join('')}
     </div>`;
   }).join('');
+}
+
+// 📝 有給記録の一覧・取り消し（間違った記録を修正できる）
+function openLeaveHistoryModal(uid){
+  const u=getAllStaff().find(x=>x.id===uid);
+  if(!u) return;
+  const recs=leaveRec.filter(l=>l.userId===uid).sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
+  const g=recs.filter(l=>l.type==='grant').reduce((s,l)=>s+l.days,0);
+  const used=recs.filter(l=>l.type==='used').reduce((s,l)=>s+l.days,0);
+  document.getElementById('app-detail-title').textContent=`📝 ${u.name}さんの有給記録`;
+  document.getElementById('app-detail-body').innerHTML=`
+    <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <div class="tc-sum-card" style="flex:1;"><div class="val">${g}日</div><div class="lbl">付与合計</div></div>
+      <div class="tc-sum-card" style="flex:1;"><div class="val" style="color:var(--amber);">${used}日</div><div class="lbl">消化合計</div></div>
+      <div class="tc-sum-card" style="flex:1;"><div class="val" style="color:${g-used>0?'var(--teal-d)':'var(--red)'};">${g-used}日</div><div class="lbl">残日数</div></div>
+    </div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;">間違った記録は右の🗑で取り消せます。取り消しは残日数に即反映され、スプレッドシートにも修正記録が残ります。</div>
+    <div style="max-height:44vh;overflow-y:auto;">
+    ${recs.length?recs.map(l=>`
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">
+        <span class="chip ${l.type==='grant'?'green':'amber'}" style="font-size:10px;">${l.type==='grant'?'付与':'消化'}</span>
+        <span style="font-size:13px;font-weight:700;">${l.days}日</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:12px;">${l.date||'—'}</div>
+          <div style="font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(l.note||'')}</div>
+        </div>
+        <button onclick="deleteLeaveRec('${uid}','${l.id}')" title="この記録を取り消す" style="padding:6px 10px;background:var(--red-l);color:var(--red);border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;">🗑</button>
+      </div>`).join(''):'<div style="color:var(--muted);font-size:13px;text-align:center;padding:16px;">記録がありません</div>'}
+    </div>`;
+  document.getElementById('app-detail-footer').innerHTML=`
+    <button class="btn-ghost" style="flex:1;" onclick="closeModal('app-detail-overlay')">閉じる</button>`;
+  openModal('app-detail-overlay');
+}
+
+function deleteLeaveRec(uid, recId){
+  const idx=leaveRec.findIndex(l=>String(l.id)===String(recId));
+  if(idx<0) return;
+  const l=leaveRec[idx];
+  const label=(l.type==='grant'?'付与':'消化')+l.days+'日（'+(l.date||'')+'）';
+  if(!confirm(label+' の記録を取り消しますか？')) return;
+  leaveRec.splice(idx,1);
+  save();
+  // シートに修正記録を残す（残日数も再計算されて記録される）
+  pushLeaveToGas({userId:uid, type:l.type==='grant'?'used':'grant', days:0, date:l.date,
+    note:'【記録取消】'+label+(l.note?'／元の備考：'+l.note:'')});
+  auditLog('leave_fix', currentUser.id, `${uid} ${label} 取消`);
+  showToast('記録を取り消しました ✓','success');
+  renderLeavePanel();
+  openLeaveHistoryModal(uid);
 }
 
 function openGrantLeaveModal(uid){
